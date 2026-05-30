@@ -86,12 +86,12 @@ function AboutPanel({ T, onClose }) {
           <div style={{ fontSize:28, fontWeight:800, color:T.text, letterSpacing:"-1px" }}>SOMA</div>
           <div style={{ fontSize:12, color:T.accent, fontWeight:700, letterSpacing:"2px", marginTop:4 }}>VERSION 1.0.0 · BETA</div>
           <p style={{ fontSize:14, color:T.subtext, marginTop:14, lineHeight:1.8, maxWidth:380, margin:"14px auto 0" }}>
-            SOMA est un assistant IA conversationnel alimenté par Claude Sonnet 4 d'Anthropic. Conçu pour être rapide, intelligent et beau.
+            SOMA est un assistant IA conversationnel alimenté par Mistral Large. Conçu pour être rapide, intelligent et beau.
           </p>
         </div>
         {/* Info grid */}
         <div style={{ background:T.card, borderRadius:16, border:`1px solid ${T.border}`, overflow:"hidden" }}>
-          {[["Modèle IA","Claude Sonnet 4"],["Backend","Render (Node.js)"],["Authentification","Firebase Auth"],["Base de données","Firestore"],["Hébergement","Render + Firebase"],["Développé par","Toi + Claude 🤝"]].map(([k,v],i,arr)=>(
+          {[["Modèle IA","Mistral Large"],["Backend","Render (Node.js)"],["Authentification","Firebase Auth"],["Base de données","Firestore"],["Hébergement","Render + Firebase"],["Développé par","Toi + Claude 🤝"]].map(([k,v],i,arr)=>(
             <div key={k} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 18px",borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none" }}>
               <span style={{ fontSize:13, color:T.subtext }}>{k}</span>
               <span style={{ fontSize:13, color:T.text, fontWeight:700 }}>{v}</span>
@@ -187,7 +187,7 @@ function SettingsPanel({ T, themeName, onThemeToggle, onClose }) {
         </div>
         <div style={{ background:`${T.cyan}12`, border:`1px solid ${T.cyan}33`, borderRadius:14, padding:"14px 18px" }}>
           <p style={{ fontSize:12, color:T.text, lineHeight:1.7 }}>
-            💡 Remplace l'URL dans <code style={{ color:T.accent, fontSize:11 }}>sendMessage()</code> par <code style={{ color:T.accent, fontSize:11 }}>https://ton-app.render.com/api/chat</code>
+            💡 Proxy actif sur <code style={{ color:T.accent, fontSize:11 }}>https://soma-server.onrender.com/api/chat</code>
           </p>
         </div>
       </div>
@@ -406,9 +406,9 @@ function App() {
     }
     try {
       const apiMessages = history.map(m=>({role:m.role,content:m.content}));
-      const response = await fetch("https://api.anthropic.com/v1/messages",{
+      const response = await fetch("https://soma-server.onrender.com/api/chat",{
         method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000,
+        body:JSON.stringify({ model:"mistral-large-latest", max_tokens:1000,
           system:"Tu es SOMA, un assistant IA intelligent, créatif et bienveillant. Réponds en français sauf si l'utilisateur parle une autre langue. Sois concis mais complet.",
           messages:apiMessages }),
       });
@@ -532,7 +532,7 @@ function App() {
           <div style={{ flex:1 }}>
             <div style={{ display:"flex",alignItems:"center",gap:8 }}>
               <span style={{ fontSize:15,fontWeight:800,letterSpacing:"-0.5px",color:T.text }}>SOMA</span>
-              <span style={{ fontSize:10,padding:"2px 8px",borderRadius:20,background:`${T.cyan}18`,color:T.cyan,border:`1px solid ${T.cyan}44`,fontWeight:600 }}>claude-sonnet-4</span>
+              <span style={{ fontSize:10,padding:"2px 8px",borderRadius:20,background:`${T.cyan}18`,color:T.cyan,border:`1px solid ${T.cyan}44`,fontWeight:600 }}>mistral-large</span>
             </div>
             <div style={{ fontSize:11,color:T.muted }}>{loading?"En train de réfléchir…":aborted?"Réponse interrompue":"Prête à discuter"}</div>
           </div>
