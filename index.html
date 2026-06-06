@@ -608,12 +608,44 @@ async function sendMessage(text) {
       }),
     });
     if (state.abortFlag) return;
+
     const data = await res.json();
     if (state.abortFlag) return;
-    const txt = data.content?.[0]?.text || 'Désolé, une erreur est survenue.';
+
+    // Debug — log the full response to console
+    console.log('[SOMA] Server response:', JSON.stringify(data));
+
+    if (!res.ok) {
+      const errMsg = data.error || data.message || `Erreur serveur (${res.status})`;
+      state.messages.push({ role:'assistant', content:`⚠️ ${errMsg}`, id: Date.now()+1 });
+      return;
+    }
+
+    // Server returns normalized format: { content: [{ type:'text', text:'...' }] }
+    // Also handle raw Mistral format: { choices: [{ message: { content:'...' } }] }
+    let txt = '';
+    if (data.content && data.content[0]?.text) {
+      txt = data.content[0].text;
+    } else if (data.choices && data.choices[0]?.message?.content) {
+      txt = data.choices[0].message.content;
+    } else if (typeof data === 'string') {
+      txt = data;
+    } else {
+      console.error('[SOMA] Unexpected response format:', data);
+      txt = '⚠️ Format de réponse inattendu. Vérifie la console.';
+    }
+
     state.messages.push({ role:'assistant', content:txt, id: Date.now()+1 });
+
   } catch(e) {
-    if (!state.abortFlag) state.messages.push({ role:'assistant', content:'❌ Erreur de connexion au serveur.', id: Date.now()+1 });
+    console.error('[SOMA] Fetch error:', e);
+    if (!state.abortFlag) {
+      const isOffline = !navigator.onLine;
+      const msg = isOffline
+        ? '📡 Pas de connexion internet.'
+        : '❌ Impossible de joindre le serveur. Il est peut-être en train de démarrer (Render Free peut prendre 50s). Réessaie dans quelques secondes.';
+      state.messages.push({ role:'assistant', content: msg, id: Date.now()+1 });
+    }
   } finally {
     if (!state.abortFlag) state.loading = false;
     renderAll();
