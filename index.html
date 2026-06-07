@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#0A0A0F"/>
-<meta name="description" content="SOMA — Ton assistant IA personnel propulsé par Mistral Large"/>
+<meta name="description" content="SOMA — Assistant IA propulsé par Mistral Large"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="SOMA"/>
@@ -13,15 +13,71 @@
 <title>SOMA — Assistant IA</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+
+<!-- Firebase SDK (CDN) -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
+import { getAuth, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc, collection, addDoc, getDocs, deleteDoc, updateDoc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDX7RzeGcJcYYBEUKYMTRiqmQQnD7OYhnM",
+  authDomain: "soma-ai-a7322.firebaseapp.com",
+  projectId: "soma-ai-a7322",
+  storageBucket: "soma-ai-a7322.firebasestorage.app",
+  messagingSenderId: "447280140943",
+  appId: "1:447280140943:web:40e7022b81bb6781ae56fa"
+};
+
+const app   = initializeApp(firebaseConfig);
+const auth  = getAuth(app);
+const db    = getFirestore(app);
+const gProvider = new GoogleAuthProvider();
+
+// ── Expose to global scope ──────────────────────────────────────────────────
+window.SOMA_AUTH = {
+  signInGoogle: () => signInWithPopup(auth, gProvider),
+  signInEmail:  (email, pass) => signInWithEmailAndPassword(auth, email, pass),
+  signUp:       async (name, email, pass) => {
+    const cred = await createUserWithEmailAndPassword(auth, email, pass);
+    await updateProfile(cred.user, { displayName: name });
+    return cred;
+  },
+  signOut: () => signOut(auth),
+  onAuth:  (cb) => onAuthStateChanged(auth, cb),
+
+  // Firestore conversations
+  saveConv: async (uid, conv) => {
+    await setDoc(doc(db, 'users', uid, 'conversations', String(conv.id)), conv);
+  },
+  loadConvs: async (uid) => {
+    const q = query(collection(db, 'users', uid, 'conversations'), orderBy('updatedAt', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data());
+  },
+  deleteConv: async (uid, convId) => {
+    await deleteDoc(doc(db, 'users', uid, 'conversations', String(convId)));
+  },
+  saveMsg: async (uid, convId, messages) => {
+    await updateDoc(doc(db, 'users', uid, 'conversations', String(convId)), {
+      messages, updatedAt: Date.now()
+    });
+  }
+};
+
+// Listen auth state
+onAuthStateChanged(auth, (user) => {
+  window.dispatchEvent(new CustomEvent('soma-auth', { detail: user }));
+});
+</script>
+
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;height:100dvh;overflow:hidden;font-family:'Syne',sans-serif;-webkit-font-smoothing:antialiased}
 ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#2A2A35;border-radius:4px}
 textarea,input,button{font-family:'Syne',sans-serif}
-textarea{resize:none}
-textarea:focus,input:focus{outline:none}
+textarea{resize:none}textarea:focus,input:focus{outline:none}
 
-/* ── ANIMATIONS ── */
 @keyframes bounce{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-6px);opacity:1}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
@@ -31,14 +87,12 @@ textarea:focus,input:focus{outline:none}
 @keyframes stopPulse{0%,100%{box-shadow:0 0 0 0 rgba(232,112,112,.25)}50%{box-shadow:0 0 0 7px rgba(232,112,112,0)}}
 @keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(232,197,71,.3)}50%{box-shadow:0 0 0 8px rgba(232,197,71,0)}}
 
-/* ── LAYOUT ── */
 #app{display:flex;height:100dvh;overflow:hidden;transition:background .3s,color .3s}
 #sidebar{display:flex;flex-direction:column;transition:width .3s cubic-bezier(.4,0,.2,1),min-width .3s cubic-bezier(.4,0,.2,1);overflow:hidden}
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
 #messages{flex:1;overflow-y:auto;padding:28px 18px}
 #messages-inner{max-width:700px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
 
-/* ── MSG BUBBLES ── */
 .msg-row{display:flex;gap:12px;align-items:flex-start;animation:fadeUp .3s ease forwards}
 .msg-row.user{flex-direction:row-reverse}
 .avatar{width:34px;height:34px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#0A0A0F}
@@ -46,64 +100,55 @@ textarea:focus,input:focus{outline:none}
 .bubble.user{border-radius:18px 4px 18px 18px}
 .bubble.ai{border-radius:4px 18px 18px 18px}
 
-/* ── TYPING DOTS ── */
 .typing-dot{width:7px;height:7px;border-radius:50%;display:inline-block}
 .typing-dot:nth-child(1){animation:bounce 1.2s ease-in-out 0s infinite}
 .typing-dot:nth-child(2){animation:bounce 1.2s ease-in-out .2s infinite}
 .typing-dot:nth-child(3){animation:bounce 1.2s ease-in-out .4s infinite}
 
-/* ── CONV ITEMS ── */
 .conv-item{padding:9px 10px;border-radius:9px;cursor:pointer;font-size:13px;margin-bottom:2px;transition:all .18s;display:flex;align-items:center;gap:6px;position:relative;border-left:2px solid transparent}
 .conv-item:hover .conv-dot{opacity:1!important}
 .conv-dot{opacity:0;transition:opacity .15s;background:none;border:none;cursor:pointer;padding:2px 4px;font-size:16px;line-height:1;flex-shrink:0}
 
-/* ── SUGGESTION CARDS ── */
-.suggestion-btn{padding:13px 15px;border-radius:12px;cursor:pointer;text-align:left;font-size:13px;font-family:'Syne',sans-serif;font-weight:500;transition:all .2s;line-height:1.4;border:1px solid}
+.suggestion-btn{padding:13px 15px;border-radius:12px;cursor:pointer;text-align:left;font-size:13px;font-family:'Syne',sans-serif;font-weight:500;transition:all .2s;line-height:1.4;width:100%}
 
-/* ── INPUT WRAP ── */
 #input-wrap{display:flex;align-items:flex-end;gap:8px;border-radius:18px;padding:10px 10px 10px 12px;transition:border-color .2s,box-shadow .2s}
-#input-wrap:focus-within{box-shadow:0 0 0 1px rgba(232,197,71,.1)}
 
-/* ── DRAWER ── */
-#drawer{position:fixed;top:0;right:0;bottom:0;width:280px;display:flex;flex-direction:column;z-index:201;animation:slideRight .25s cubic-bezier(.4,0,.2,1);box-shadow:-12px 0 40px rgba(0,0,0,.3)}
+/* ── MENU BUTTON — top right in header ── */
+#fab-menu{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .2s}
+#fab-menu:hover{opacity:.8}
+#fab-menu:active{transform:scale(.95)}
+
+#drawer{position:fixed;top:0;right:0;bottom:0;width:290px;display:flex;flex-direction:column;z-index:201;animation:slideRight .25s cubic-bezier(.4,0,.2,1);box-shadow:-12px 0 40px rgba(0,0,0,.3)}
 #drawer-overlay{position:fixed;inset:0;z-index:200;animation:fadeIn .2s ease}
-
-/* ── FULL PANEL ── */
 .full-panel{position:fixed;inset:0;z-index:500;display:flex;flex-direction:column;animation:slideUp .28s cubic-bezier(.4,0,.2,1)}
-.full-panel-header{display:flex;align-items:center;gap:12px;padding:16px 20px}
-.full-panel-body{flex:1;overflow-y:auto;padding:24px 20px}
 
-/* ── CONTEXT MENU ── */
 #ctx-menu{position:fixed;border-radius:14px;padding:6px;z-index:300;min-width:180px;box-shadow:0 12px 40px rgba(0,0,0,.4);animation:fadeUp .15s ease}
 .ctx-btn{width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;background:transparent;border:none;cursor:pointer;font-size:13px;font-family:'Syne',sans-serif;font-weight:600;text-align:left;transition:background .15s}
 
-/* ── PLUS MENU ── */
 #plus-menu{position:absolute;bottom:calc(100% + 8px);left:0;border-radius:16px;padding:8px;z-index:99;min-width:190px;box-shadow:0 12px 40px rgba(0,0,0,.35);animation:fadeUp .18s ease}
 .plus-btn-item{width:100%;display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;background:transparent;border:none;cursor:pointer;font-size:14px;font-family:'Syne',sans-serif;font-weight:600;text-align:left;transition:background .15s}
 
-/* ── TOGGLE ── */
 .toggle-track{width:52px;height:28px;border-radius:14px;border:none;cursor:pointer;position:relative;transition:background .3s}
 .toggle-thumb{position:absolute;top:3px;width:22px;height:22px;border-radius:50%;transition:left .3s;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.25)}
 
-/* ── AUTH MODAL ── */
 #auth-overlay{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s ease}
-#auth-box{border-radius:20px;padding:32px 28px;width:380px;max-width:92vw;box-shadow:0 24px 80px rgba(0,0,0,.35)}
+#auth-box{border-radius:20px;padding:32px 28px;width:380px;max-width:92vw;box-shadow:0 24px 80px rgba(0,0,0,.4)}
 
-/* ── MISC ── */
 .hidden{display:none!important}
 .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:26px;text-align:center}
-.info-row{display:flex;justify-content:space-between;align-items:center;padding:13px 18px}
-.info-row+.info-row{border-top:1px solid}
+
+/* ── TOAST ── */
+#toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:20px;font-size:13px;font-weight:600;z-index:999;animation:fadeUp .3s ease;white-space:nowrap}
 </style>
 </head>
 <body>
 
-<!-- ── TEMPLATES (SVG icons) ───────────────────────────────────────────── -->
+<!-- SVG icon templates -->
 <template id="t-mic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="9" y1="22" x2="15" y2="22"/></svg></template>
 <template id="t-send"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></template>
 <template id="t-stop"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></template>
 <template id="t-plus"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></template>
-<template id="t-menu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="17" x2="21" y2="17"/></svg></template>
+<template id="t-menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="17" x2="21" y2="17"/></svg></template>
 <template id="t-close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></template>
 <template id="t-back"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg></template>
 <template id="t-google"><svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg></template>
@@ -111,9 +156,7 @@ textarea:focus,input:focus{outline:none}
 <template id="t-sun"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></template>
 <template id="t-logout"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></template>
 
-<!-- ── APP SHELL ─────────────────────────────────────────────────────────── -->
 <div id="app">
-
   <!-- SIDEBAR -->
   <div id="sidebar">
     <div id="sidebar-top">
@@ -121,36 +164,29 @@ textarea:focus,input:focus{outline:none}
         <div id="sidebar-logo-icon">✦</div>
         <span id="sidebar-logo-text">SOMA</span>
       </div>
-      <button id="new-conv-btn">
-        <span>+</span> Nouvelle conversation
-      </button>
+      <button id="new-conv-btn"><span>+</span> Nouvelle conversation</button>
     </div>
-    <div id="conv-list-wrap">
+    <div id="conv-list-wrap" style="flex:1;overflow-y:auto;padding:10px 8px">
       <div class="section-label">Historique</div>
       <div id="conv-list"></div>
     </div>
-    <div id="sidebar-footer">
-      <div id="sidebar-user"></div>
-    </div>
+    <div id="sidebar-footer"></div>
   </div>
 
   <!-- MAIN -->
   <div id="main">
-
-    <!-- HEADER -->
     <div id="header">
       <button id="sidebar-toggle-btn" class="icon-btn"></button>
       <div id="header-info">
-        <div id="header-title-row">
+        <div style="display:flex;align-items:center;gap:8px">
           <span id="header-title">SOMA</span>
-          <span id="model-badge">mistral-large</span>
+
         </div>
         <div id="header-status">Prête à discuter</div>
       </div>
-      <button id="menu-btn" class="icon-btn"></button>
+      <button id="fab-menu" style="margin-left:auto;flex-shrink:0"></button>
     </div>
 
-    <!-- MESSAGES -->
     <div id="messages">
       <div id="empty-state" class="empty-state">
         <div>
@@ -164,45 +200,37 @@ textarea:focus,input:focus{outline:none}
       <div id="messages-inner"></div>
     </div>
 
-    <!-- INPUT BAR -->
     <div id="input-bar">
       <div id="attach-preview"></div>
-      <div id="input-wrap" style="position:relative">
+      <div id="input-wrap" style="position:relative;max-width:700px;margin:0 auto">
         <div style="position:relative">
           <div id="plus-menu" class="hidden"></div>
           <button id="plus-btn" class="icon-btn small"></button>
         </div>
-        <textarea id="msg-input" rows="1" placeholder="Message à SOMA… (Entrée pour envoyer)"></textarea>
+        <textarea id="msg-input" rows="1" placeholder="Message à SOMA…"></textarea>
         <button id="action-btn" class="icon-btn send"></button>
       </div>
-      <div id="input-footer">SOMA · Mistral Large · Render · Firebase</div>
+      <div id="input-footer">SOMA · Powered by AI · Firebase · Render</div>
     </div>
   </div>
 </div>
 
-<!-- CONTEXT MENU -->
-<div id="ctx-menu" class="hidden"></div>
 
-<!-- DRAWER -->
+<!-- OVERLAYS -->
+<div id="ctx-menu" class="hidden"></div>
 <div id="drawer-overlay" class="hidden"></div>
 <div id="drawer" class="hidden"></div>
-
-<!-- FULL PANELS -->
 <div id="panel-about"    class="full-panel hidden"></div>
 <div id="panel-settings" class="full-panel hidden"></div>
 <div id="panel-account"  class="full-panel hidden"></div>
-
-<!-- AUTH MODAL -->
-<div id="auth-overlay" class="hidden">
-  <div id="auth-box"></div>
-</div>
+<div id="auth-overlay"   class="hidden"><div id="auth-box"></div></div>
+<div id="toast"          class="hidden"></div>
 
 <script>
-// ═══════════════════════════════════════════════════════════════════════════════
-// SOMA — Pure HTML5/JS · Mistral Large · No frameworks
-// ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// SOMA — HTML5 Vanilla · Mistral Large · Firebase Auth + Firestore
+// ═══════════════════════════════════════════════════════════════════════════
 
-// ── THEMES ────────────────────────────────────────────────────────────────────
 const THEMES = {
   dark:{
     bg:"#0A0A0F",sidebar:"#0D0D14",border:"#1A1A25",card:"#131320",
@@ -235,601 +263,468 @@ const SUGGESTIONS = [
 
 const API_URL = "https://soma-server.onrender.com/api/chat";
 
-// ── SVG HELPERS ───────────────────────────────────────────────────────────────
-const svg = id => document.getElementById(id).innerHTML;
-const icon = {
-  mic:    () => svg('t-mic'),
-  send:   () => svg('t-send'),
-  stop:   () => svg('t-stop'),
-  plus:   () => svg('t-plus'),
-  menu:   () => svg('t-menu'),
-  close:  () => svg('t-close'),
-  back:   () => svg('t-back'),
-  google: () => svg('t-google'),
-  moon:   () => svg('t-moon'),
-  sun:    () => svg('t-sun'),
-  logout: () => svg('t-logout'),
-  user:   () => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
-  info:   () => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
-  gear:   () => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`,
-  trash:  () => `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
-  share:  () => `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`,
-  edit:   () => `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
-  pin:    () => `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1v3.76z"/></svg>`,
+// ── STATE ──────────────────────────────────────────────────────────────────
+let S = {
+  theme:'dark', sidebarOpen: window.innerWidth > 600,
+  messages:[], conversations:[{id:1,title:'Nouvelle conversation',pinned:false,messages:[],updatedAt:Date.now()}],
+  activeConv:1, loading:false, aborted:false, abortFlag:false,
+  firebaseUser:null, // real Firebase user object
+  renamingId:null, renameVal:'',
+  attachments:[], isListening:false,
+  showPlusMenu:false, drawerOpen:false, fullPanel:null,
+  ctxMenu:null, notifOn:true, historyOn:true, lang:'fr',
+  recognition:null, authLoading:false,
+};
+let T = THEMES[S.theme];
+
+// ── SVG ICONS ──────────────────────────────────────────────────────────────
+const ic = {
+  mic:()=>document.getElementById('t-mic').innerHTML,
+  send:()=>document.getElementById('t-send').innerHTML,
+  stop:()=>document.getElementById('t-stop').innerHTML,
+  plus:()=>document.getElementById('t-plus').innerHTML,
+  menu:()=>document.getElementById('t-menu').innerHTML,
+  close:()=>document.getElementById('t-close').innerHTML,
+  back:()=>document.getElementById('t-back').innerHTML,
+  google:()=>document.getElementById('t-google').innerHTML,
+  moon:()=>document.getElementById('t-moon').innerHTML,
+  sun:()=>document.getElementById('t-sun').innerHTML,
+  logout:()=>document.getElementById('t-logout').innerHTML,
+  user:()=>`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+  info:()=>`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+  gear:()=>`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  trash:()=>`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+  share:()=>`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`,
+  edit:()=>`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+  pin:()=>`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1v3.76z"/></svg>`,
 };
 
-// ── STATE ──────────────────────────────────────────────────────────────────────
-let state = {
-  theme: 'dark',
-  sidebarOpen: window.innerWidth > 600,
-  messages: [],
-  conversations: [{ id: 1, title: 'Nouvelle conversation', pinned: false }],
-  activeConv: 1,
-  loading: false,
-  aborted: false,
-  abortFlag: false,
-  user: null,
-  renamingId: null,
-  renameVal: '',
-  attachments: [],
-  isListening: false,
-  showPlusMenu: false,
-  drawerOpen: false,
-  fullPanel: null, // 'about'|'settings'|'account'
-  showAuth: false,
-  authMode: 'choice', // 'choice'|'login'|'register'|'profile'
-  ctxMenu: null, // { convId, x, y }
-  notifOn: true,
-  historyOn: true,
-  lang: 'fr',
-  recognition: null,
-};
+// ── TOAST ──────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, isErr=false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.cssText = `position:fixed;bottom:100px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:20px;font-size:13px;font-weight:600;z-index:999;animation:fadeUp .3s ease;background:${isErr?T.dangerBg:T.card};color:${isErr?T.danger:T.text};border:1px solid ${isErr?T.dangerBorder:T.border}`;
+  el.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.add('hidden'), 3000);
+}
 
-let T = THEMES[state.theme];
+// ── USER DISPLAY ───────────────────────────────────────────────────────────
+function userName() {
+  if (!S.firebaseUser) return null;
+  return S.firebaseUser.displayName || S.firebaseUser.email?.split('@')[0] || 'Utilisateur';
+}
+function userInitial() { return (userName()||'U')[0].toUpperCase(); }
+function userMethod() {
+  if (!S.firebaseUser) return '';
+  const p = S.firebaseUser.providerData?.[0]?.providerId || '';
+  return p.includes('google') ? 'google' : 'email';
+}
 
-// ── APPLY THEME ───────────────────────────────────────────────────────────────
+// ── FIREBASE: load/save conversations ─────────────────────────────────────
+async function syncConvsFromFirebase() {
+  if (!S.firebaseUser || !window.SOMA_AUTH) return;
+  try {
+    const convs = await window.SOMA_AUTH.loadConvs(S.firebaseUser.uid);
+    if (convs.length > 0) {
+      S.conversations = convs;
+      S.activeConv = convs[0].id;
+      S.messages = convs[0].messages || [];
+    }
+  } catch(e) { console.warn('Firestore load error:', e); }
+}
+
+async function saveCurrentConv() {
+  if (!S.firebaseUser || !window.SOMA_AUTH) return;
+  const conv = S.conversations.find(c=>c.id===S.activeConv);
+  if (!conv) return;
+  try {
+    await window.SOMA_AUTH.saveConv(S.firebaseUser.uid, { ...conv, messages: S.messages, updatedAt: Date.now() });
+  } catch(e) { console.warn('Firestore save error:', e); }
+}
+
+// ── FIREBASE AUTH LISTENER ─────────────────────────────────────────────────
+window.addEventListener('soma-auth', async (e) => {
+  S.firebaseUser = e.detail;
+  if (S.firebaseUser) {
+    await syncConvsFromFirebase();
+    toast(`👋 Bienvenue ${userName()} !`);
+  }
+  renderAll();
+  // Refresh account panel if open
+  if (S.fullPanel === 'account') openPanel('account');
+});
+
+// ── THEME ──────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  S.theme = S.theme==='dark'?'light':'dark';
+  T = THEMES[S.theme];
+  document.querySelector('meta[name="theme-color"]').content = T.bg;
+  renderAll();
+}
+
+// ── APPLY THEME & RENDER ───────────────────────────────────────────────────
 function applyTheme() {
-  T = THEMES[state.theme];
+  T = THEMES[S.theme];
   const app = document.getElementById('app');
-  app.style.background = T.bg;
-  app.style.color = T.text;
+  app.style.background = T.bg; app.style.color = T.text;
 
-  // sidebar
+  // Sidebar
   const sb = document.getElementById('sidebar');
-  sb.style.background = T.sidebar;
-  sb.style.borderRight = `1px solid ${T.border}`;
-  sb.style.width = state.sidebarOpen ? '265px' : '0';
-  sb.style.minWidth = state.sidebarOpen ? '265px' : '0';
+  sb.style.cssText = `display:flex;flex-direction:column;transition:width .3s cubic-bezier(.4,0,.2,1),min-width .3s cubic-bezier(.4,0,.2,1);overflow:hidden;background:${T.sidebar};border-right:1px solid ${T.border};width:${S.sidebarOpen?'265px':'0'};min-width:${S.sidebarOpen?'265px':'0'}`;
 
-  // sidebar top
-  styleEl('sidebar-top', `background:${T.sidebar};border-bottom:1px solid ${T.border};padding:22px 18px 14px`);
-  styleEl('sidebar-logo', 'display:flex;align-items:center;gap:10px;margin-bottom:14px');
-  styleEl('sidebar-logo-icon', `width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,${T.accent},${T.accentDark});display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:#0A0A0F`);
-  styleEl('sidebar-logo-text', `font-size:20px;font-weight:800;letter-spacing:-1px;color:${T.text}`);
+  const st = document.getElementById('sidebar-top');
+  st.style.cssText = `padding:22px 18px 14px;border-bottom:1px solid ${T.border}`;
+
+  document.getElementById('sidebar-logo').style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:14px';
+  document.getElementById('sidebar-logo-icon').style.cssText = `width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,${T.accent},${T.accentDark});display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:#0A0A0F`;
+  document.getElementById('sidebar-logo-text').style.cssText = `font-size:20px;font-weight:800;letter-spacing:-1px;color:${T.text}`;
 
   const ncb = document.getElementById('new-conv-btn');
-  Object.assign(ncb.style, { width:'100%',padding:'10px 14px',background:T.card,border:`1px solid ${T.border}`,borderRadius:'10px',color:T.text,cursor:'pointer',fontSize:'13px',fontWeight:'600',display:'flex',alignItems:'center',gap:'8px',transition:'background .2s' });
-  ncb.onmouseenter = () => ncb.style.background = T.cardHover;
-  ncb.onmouseleave = () => ncb.style.background = T.card;
+  ncb.style.cssText = `width:100%;padding:10px 14px;background:${T.card};border:1px solid ${T.border};border-radius:10px;color:${T.text};cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;transition:background .2s`;
+  ncb.onmouseenter=()=>ncb.style.background=T.cardHover; ncb.onmouseleave=()=>ncb.style.background=T.card;
 
-  // section label
-  document.querySelectorAll('.section-label').forEach(el => {
-    el.style.cssText = `font-size:10px;font-weight:700;letter-spacing:1.5px;color:${T.muted};padding:4px 8px 6px;text-transform:uppercase`;
-  });
+  document.querySelectorAll('.section-label').forEach(el=>el.style.cssText=`font-size:10px;font-weight:700;letter-spacing:1.5px;color:${T.muted};padding:4px 8px 6px;text-transform:uppercase`);
 
-  // header
+  // Header
   const hdr = document.getElementById('header');
-  Object.assign(hdr.style, { padding:'14px 18px',borderBottom:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:'12px',background:T.bg });
+  hdr.style.cssText = `padding:14px 18px;border-bottom:1px solid ${T.border};display:flex;align-items:center;gap:12px;background:${T.bg}`;
+  const stb = document.getElementById('sidebar-toggle-btn');
+  stb.style.cssText = `width:36px;height:36px;border-radius:9px;background:${T.card};border:1px solid ${T.border};color:${T.text};cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0`;
+  stb.innerHTML = S.sidebarOpen ? '←' : '→';
 
-  // sidebar toggle
-  styleIconBtn('sidebar-toggle-btn');
-  document.getElementById('sidebar-toggle-btn').innerHTML = state.sidebarOpen ? '←' : '→';
+  document.getElementById('header-title').style.cssText = `font-size:15px;font-weight:800;letter-spacing:-.5px;color:${T.text}`;
+  const mb=document.getElementById('model-badge'); if(mb) mb.style.display='none';
+  document.getElementById('header-status').style.cssText = `font-size:11px;color:${T.muted}`;
+  document.getElementById('header-status').textContent = S.loading?'En train de réfléchir…':S.aborted?'Réponse interrompue':'Prête à discuter';
 
-  styleEl('header-title', `font-size:15px;font-weight:800;letter-spacing:-.5px;color:${T.text}`);
-  styleEl('model-badge', `font-size:10px;padding:2px 8px;border-radius:20px;background:${T.cyan}18;color:${T.cyan};border:1px solid ${T.cyan}44;font-weight:600`);
-  styleEl('header-status', `font-size:11px;color:${T.muted}`);
-  document.getElementById('header-status').textContent = state.loading ? 'En train de réfléchir…' : state.aborted ? 'Réponse interrompue' : 'Prête à discuter';
+  // FAB menu button — bottom right corner
+  const fab = document.getElementById('fab-menu');
+  fab.style.cssText = `width:38px;height:38px;border-radius:10px;background:${T.card};border:1px solid ${T.border};color:${T.text};cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s`;
+  fab.innerHTML = ic.menu();
 
-  // menu btn
-  styleIconBtn('menu-btn');
-  document.getElementById('menu-btn').innerHTML = icon.menu();
-
-  // messages bg
+  // Messages
   document.getElementById('messages').style.background = T.bg;
 
-  // empty state
-  styleEl('empty-icon', `font-size:50px;margin-bottom:10px;background:linear-gradient(135deg,${T.accent},${T.cyan});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`);
-  styleEl('empty-title', `font-size:22px;font-weight:800;letter-spacing:-.5px;margin-bottom:8px;color:${T.text}`);
-  styleEl('empty-sub', `font-size:14px;color:${T.muted}`);
+  // Empty state
+  document.getElementById('empty-icon').style.cssText = `font-size:50px;margin-bottom:10px;background:linear-gradient(135deg,${T.accent},${T.cyan});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`;
+  document.getElementById('empty-title').style.cssText = `font-size:22px;font-weight:800;letter-spacing:-.5px;margin-bottom:8px;color:${T.text}`;
+  document.getElementById('empty-sub').style.cssText = `font-size:14px;color:${T.muted}`;
 
-  // suggestions
-  document.querySelectorAll('.suggestion-btn').forEach(btn => {
-    btn.style.cssText = `padding:13px 15px;border-radius:12px;background:${T.card};border:1px solid ${T.border};color:${T.subtext};cursor:pointer;text-align:left;font-size:13px;font-family:'Syne',sans-serif;font-weight:500;transition:all .2s;line-height:1.4;width:100%`;
-    btn.onmouseenter = () => btn.style.borderColor = T.accent;
-    btn.onmouseleave = () => btn.style.borderColor = T.border;
-  });
-
-  // login CTA
+  // Login CTA
   const cta = document.getElementById('login-cta');
-  if (!state.user) {
-    cta.style.display = 'flex';
-    cta.style.cssText += `;padding:10px 20px;border-radius:20px;background:${T.accent}18;border:1px solid ${T.accent}44;color:${T.accent};cursor:pointer;font-size:13px;font-weight:700;font-family:'Syne',sans-serif;gap:8px;align-items:center`;
-    cta.textContent = '✦ Connecte-toi pour sauvegarder tes conversations';
-  } else {
-    cta.style.display = 'none';
-  }
+  if (!S.firebaseUser) {
+    cta.style.cssText = `display:flex;padding:10px 20px;border-radius:20px;background:${T.accent}18;border:1px solid ${T.accent}44;color:${T.accent};cursor:pointer;font-size:13px;font-weight:700;font-family:'Syne',sans-serif;gap:8px;align-items:center`;
+    cta.textContent = '✦ Connecte-toi pour sauvegarder';
+  } else { cta.style.display = 'none'; }
 
-  // input bar
-  styleEl('input-bar', `padding:12px 18px 16px;background:${T.bg};border-top:1px solid ${T.border}`);
+  // Input bar
+  document.getElementById('input-bar').style.cssText = `padding:12px 18px 16px;background:${T.bg};border-top:1px solid ${T.border}`;
   const iw = document.getElementById('input-wrap');
   iw.style.cssText = `display:flex;align-items:flex-end;gap:8px;border-radius:18px;padding:10px 10px 10px 12px;transition:border-color .2s,box-shadow .2s;background:${T.input};border:1px solid ${T.inputBorder};position:relative;max-width:700px;margin:0 auto`;
 
   const ta = document.getElementById('msg-input');
-  Object.assign(ta.style, { flex:'1',background:'transparent',border:'none',color:T.text,fontSize:'14px',fontFamily:"'Syne',sans-serif",lineHeight:'1.6',maxHeight:'160px',overflowY:'auto',paddingTop:'6px' });
-  ta.style.setProperty('--placeholder-color', T.muted);
+  Object.assign(ta.style, {flex:'1',background:'transparent',border:'none',color:T.text,fontSize:'14px',fontFamily:"'Syne',sans-serif",lineHeight:'1.6',maxHeight:'160px',overflowY:'auto',paddingTop:'6px'});
 
-  styleEl('input-footer', `text-align:center;margin-top:7px;font-size:11px;color:${T.border}`);
+  document.getElementById('input-footer').style.cssText = `text-align:center;margin-top:7px;font-size:11px;color:${T.border}`;
 
-  // plus btn
+  // Plus btn
   const pb = document.getElementById('plus-btn');
-  pb.style.cssText = `width:34px;height:34px;border-radius:9px;flex-shrink:0;background:${T.card};border:1px solid ${state.showPlusMenu ? T.accent : T.border};color:${state.showPlusMenu ? T.accent : T.subtext};cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s`;
-  pb.innerHTML = icon.plus();
+  pb.style.cssText = `width:34px;height:34px;border-radius:9px;flex-shrink:0;background:${T.card};border:1px solid ${S.showPlusMenu?T.accent:T.border};color:${S.showPlusMenu?T.accent:T.subtext};cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s`;
+  pb.innerHTML = ic.plus();
 
-  // action btn (mic or send)
   updateActionBtn();
-
-  // sidebar footer
   renderSidebarFooter();
   renderConvList();
 }
 
-function styleEl(id, css) {
-  const el = document.getElementById(id);
-  if (el) el.style.cssText = css;
-}
-
-function styleIconBtn(id) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  Object.assign(el.style, { width:'36px',height:'36px',borderRadius:'9px',background:T.card,border:`1px solid ${T.border}`,color:T.text,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'opacity .2s',flexShrink:'0' });
-}
-
-// ── ACTION BUTTON (mic ↔ send) ─────────────────────────────────────────────
+// ── ACTION BTN ─────────────────────────────────────────────────────────────
 function updateActionBtn() {
   const btn = document.getElementById('action-btn');
-  const hasInput = document.getElementById('msg-input').value.trim().length > 0 || state.attachments.length > 0;
-  if (hasInput) {
-    btn.style.cssText = `width:38px;height:38px;border-radius:11px;border:none;flex-shrink:0;background:linear-gradient(135deg,${T.accent},${T.accentDark});color:#0A0A0F;cursor:${state.loading?'default':'pointer'};display:flex;align-items:center;justify-content:center;transition:all .2s;opacity:${state.loading?.5:1}`;
-    btn.innerHTML = icon.send();
+  const has = document.getElementById('msg-input').value.trim().length > 0 || S.attachments.length > 0;
+  if (has) {
+    btn.style.cssText = `width:38px;height:38px;border-radius:11px;border:none;flex-shrink:0;background:linear-gradient(135deg,${T.accent},${T.accentDark});color:#0A0A0F;cursor:${S.loading?'default':'pointer'};display:flex;align-items:center;justify-content:center;transition:all .2s;opacity:${S.loading?.5:1}`;
+    btn.innerHTML = ic.send();
     btn.onclick = () => sendMessage();
   } else {
-    btn.style.cssText = `width:38px;height:38px;border-radius:11px;border:1px solid ${state.isListening ? T.accent : T.border};flex-shrink:0;background:${state.isListening ? T.accent+'22' : T.card};color:${state.isListening ? T.accent : T.subtext};cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;${state.isListening ? 'animation:micPulse 1.5s ease-in-out infinite' : ''}`;
-    btn.innerHTML = icon.mic();
+    btn.style.cssText = `width:38px;height:38px;border-radius:11px;border:1px solid ${S.isListening?T.accent:T.border};flex-shrink:0;background:${S.isListening?T.accent+'22':T.card};color:${S.isListening?T.accent:T.subtext};cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;${S.isListening?'animation:micPulse 1.5s ease-in-out infinite':''}`;
+    btn.innerHTML = ic.mic();
     btn.onclick = toggleMic;
   }
 }
 
-// ── CONV LIST ─────────────────────────────────────────────────────────────────
+// ── CONV LIST ──────────────────────────────────────────────────────────────
 function renderConvList() {
   const el = document.getElementById('conv-list');
-  const sorted = [...state.conversations].sort((a,b) => (b.pinned?1:0)-(a.pinned?1:0));
+  const sorted = [...S.conversations].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0));
   el.innerHTML = '';
   sorted.forEach(conv => {
     const div = document.createElement('div');
     div.className = 'conv-item';
-    div.dataset.id = conv.id;
-    const isActive = conv.id === state.activeConv;
-    div.style.cssText = `padding:9px 10px;border-radius:9px;cursor:pointer;background:${isActive ? T.accent+'18' : 'transparent'};border-left:2px solid ${isActive ? T.accent : 'transparent'};font-size:13px;color:${isActive ? T.text : T.subtext};margin-bottom:2px;transition:all .18s;display:flex;align-items:center;gap:6px;position:relative`;
+    const active = conv.id === S.activeConv;
+    div.style.cssText = `padding:9px 10px;border-radius:9px;cursor:pointer;background:${active?T.accent+'18':'transparent'};border-left:2px solid ${active?T.accent:'transparent'};font-size:13px;color:${active?T.text:T.subtext};margin-bottom:2px;transition:all .18s;display:flex;align-items:center;gap:6px;position:relative`;
 
-    if (state.renamingId === conv.id) {
+    if (S.renamingId===conv.id) {
       const inp = document.createElement('input');
-      inp.value = state.renameVal;
+      inp.value = S.renameVal;
       inp.style.cssText = `flex:1;background:transparent;border:none;border-bottom:1px solid ${T.accent};color:${T.text};font-size:13px;font-family:'Syne',sans-serif;outline:none;padding:1px 0`;
-      inp.oninput = e => state.renameVal = e.target.value;
+      inp.oninput = e => S.renameVal = e.target.value;
       inp.onblur = applyRename;
-      inp.onkeydown = e => { if(e.key==='Enter') applyRename(); if(e.key==='Escape') { state.renamingId=null; renderConvList(); } };
+      inp.onkeydown = e => { if(e.key==='Enter') applyRename(); if(e.key==='Escape'){S.renamingId=null;renderConvList();} };
       inp.onclick = e => e.stopPropagation();
-      div.appendChild(inp);
-      setTimeout(() => inp.focus(), 0);
+      div.appendChild(inp); setTimeout(()=>inp.focus(),0);
     } else {
-      if (conv.pinned) {
-        const pin = document.createElement('span');
-        pin.textContent = '📌'; pin.style.cssText = 'font-size:10px;flex-shrink:0';
-        div.appendChild(pin);
-      }
+      if (conv.pinned) { const p=document.createElement('span'); p.textContent='📌'; p.style.cssText='font-size:10px;flex-shrink:0'; div.appendChild(p); }
       const title = document.createElement('span');
       title.textContent = conv.title;
       title.style.cssText = 'flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
       div.appendChild(title);
-
       const dot = document.createElement('button');
-      dot.className = 'conv-dot';
-      dot.textContent = '⋯';
+      dot.className='conv-dot'; dot.textContent='⋯';
       dot.style.cssText = `opacity:0;transition:opacity .15s;background:none;border:none;color:${T.muted};cursor:pointer;padding:2px 4px;font-size:16px;line-height:1;flex-shrink:0`;
-      dot.onclick = e => { e.stopPropagation(); showCtxMenu(conv.id, e.clientX, e.clientY); };
+      dot.onclick = e => { e.stopPropagation(); showCtxMenu(conv.id,e.clientX,e.clientY); };
       div.appendChild(dot);
     }
 
-    div.onclick = () => { if(state.renamingId !== conv.id) { state.activeConv = conv.id; state.messages = []; renderAll(); } };
-    div.oncontextmenu = e => { e.preventDefault(); showCtxMenu(conv.id, e.clientX, e.clientY); };
-    div.onmouseenter = () => { if(!state.renamingId) div.style.background = isActive ? T.accent+'18' : T.cardHover; const d = div.querySelector('.conv-dot'); if(d) d.style.opacity='1'; };
-    div.onmouseleave = () => { div.style.background = isActive ? T.accent+'18' : 'transparent'; const d = div.querySelector('.conv-dot'); if(d) d.style.opacity='0'; };
-
+    div.onclick = () => { if(S.renamingId!==conv.id){ S.activeConv=conv.id; S.messages=conv.messages||[]; renderAll(); } };
+    div.oncontextmenu = e => { e.preventDefault(); showCtxMenu(conv.id,e.clientX,e.clientY); };
+    div.onmouseenter = () => { div.style.background=active?T.accent+'18':T.cardHover; const d=div.querySelector('.conv-dot'); if(d)d.style.opacity='1'; };
+    div.onmouseleave = () => { div.style.background=active?T.accent+'18':'transparent'; const d=div.querySelector('.conv-dot'); if(d)d.style.opacity='0'; };
     el.appendChild(div);
   });
 }
 
-// ── SIDEBAR FOOTER ────────────────────────────────────────────────────────────
+// ── SIDEBAR FOOTER ─────────────────────────────────────────────────────────
 function renderSidebarFooter() {
-  const el = document.getElementById('sidebar-user');
+  const el = document.getElementById('sidebar-footer');
   el.style.cssText = `padding:12px 16px;border-top:1px solid ${T.border}`;
-  if (state.user) {
-    el.innerHTML = `<div style="display:flex;align-items:center;gap:10px">
-      <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,${T.cyan},#3BBFA3);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#0A0A0F">${state.user.name[0].toUpperCase()}</div>
-      <div><div style="font-size:12px;font-weight:600;color:${T.text}">${state.user.name}</div><div style="font-size:10px;color:${T.cyan}">● Connecté</div></div>
+  if (S.firebaseUser) {
+    el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="openPanel('account')">
+      <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,${T.cyan},#3BBFA3);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#0A0A0F">${userInitial()}</div>
+      <div><div style="font-size:12px;font-weight:600;color:${T.text}">${userName()}</div><div style="font-size:10px;color:${T.cyan}">● Connecté</div></div>
     </div>`;
   } else {
-    el.innerHTML = `<button id="sb-login-btn" style="width:100%;padding:9px 12px;border-radius:10px;background:${T.accent}18;border:1px solid ${T.accent}44;color:${T.accent};cursor:pointer;font-size:12px;font-weight:700;font-family:'Syne',sans-serif;transition:all .2s">✦ Se connecter</button>`;
-    document.getElementById('sb-login-btn').onclick = () => openAuth();
+    el.innerHTML = `<button onclick="openPanel('account')" style="width:100%;padding:9px 12px;border-radius:10px;background:${T.accent}18;border:1px solid ${T.accent}44;color:${T.accent};cursor:pointer;font-size:12px;font-weight:700;font-family:'Syne',sans-serif">✦ Se connecter</button>`;
   }
 }
 
-// ── RENDER MESSAGES ───────────────────────────────────────────────────────────
+// ── RENDER MESSAGES ────────────────────────────────────────────────────────
 function renderMessages() {
   const inner = document.getElementById('messages-inner');
   const empty = document.getElementById('empty-state');
-
-  if (state.messages.length === 0 && !state.loading) {
-    empty.style.display = 'flex';
-    inner.style.display = 'none';
-  } else {
-    empty.style.display = 'none';
-    inner.style.display = 'flex';
-  }
-
+  empty.style.display = (S.messages.length===0&&!S.loading) ? 'flex' : 'none';
+  inner.style.display = (S.messages.length>0||S.loading) ? 'flex' : 'none';
   inner.innerHTML = '';
-  state.messages.forEach(msg => {
+
+  S.messages.forEach(msg => {
     const row = document.createElement('div');
-    row.className = `msg-row ${msg.role === 'user' ? 'user' : ''}`;
-
-    const av = document.createElement('div');
-    av.className = 'avatar';
-    av.style.background = msg.role === 'user'
-      ? `linear-gradient(135deg,${T.cyan},#3BBFA3)`
-      : `linear-gradient(135deg,${T.accent},${T.accentDark})`;
-    av.textContent = msg.role === 'user' ? (state.user ? state.user.name[0].toUpperCase() : 'U') : '✦';
-
-    const bbl = document.createElement('div');
-    bbl.className = `bubble ${msg.role === 'user' ? 'user' : 'ai'}`;
+    row.className = `msg-row ${msg.role==='user'?'user':''}`;
+    const av = document.createElement('div'); av.className='avatar';
+    av.style.background = msg.role==='user' ? `linear-gradient(135deg,${T.cyan},#3BBFA3)` : `linear-gradient(135deg,${T.accent},${T.accentDark})`;
+    av.textContent = msg.role==='user' ? (S.firebaseUser?userInitial():'U') : '✦';
+    const bbl = document.createElement('div'); bbl.className=`bubble ${msg.role==='user'?'user':'ai'}`;
     bbl.style.cssText = `background:${msg.role==='user'?T.bubbleUser:T.bubbleAi};border:1px solid ${msg.role==='user'?T.borderUser:T.borderAi};color:${T.msgColor}`;
     bbl.textContent = msg.content;
-
-    row.appendChild(av);
-    row.appendChild(bbl);
-    inner.appendChild(row);
+    row.appendChild(av); row.appendChild(bbl); inner.appendChild(row);
   });
 
-  // Typing indicator
-  if (state.loading) {
-    const row = document.createElement('div');
-    row.className = 'msg-row';
-    row.id = 'typing-row';
-
-    const av = document.createElement('div');
-    av.className = 'avatar';
+  if (S.loading) {
+    const row = document.createElement('div'); row.className='msg-row';
+    const av = document.createElement('div'); av.className='avatar';
     av.style.cssText = `background:linear-gradient(135deg,${T.accent},${T.accentDark});animation:pulse 1.5s ease-in-out infinite`;
     av.textContent = '✦';
-
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display:flex;flex-direction:column;gap:10px;align-items:flex-start';
-
-    const bbl = document.createElement('div');
-    bbl.className = 'bubble ai';
+    const bbl = document.createElement('div'); bbl.className='bubble ai';
     bbl.style.cssText = `background:${T.bubbleAi};border:1px solid ${T.borderAi};display:flex;gap:5px;align-items:center;padding:13px 17px`;
     bbl.innerHTML = `<span class="typing-dot" style="background:${T.accent}"></span><span class="typing-dot" style="background:${T.accent}"></span><span class="typing-dot" style="background:${T.accent}"></span>`;
-
     const stopBtn = document.createElement('button');
-    stopBtn.style.cssText = `display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:20px;background:${T.dangerBg};border:1px solid ${T.dangerBorder};color:${T.danger};cursor:pointer;font-size:12px;font-family:'Syne',sans-serif;font-weight:600;transition:all .2s;animation:stopPulse 2s ease-in-out infinite`;
-    stopBtn.innerHTML = icon.stop() + ' Interrompre';
-    stopBtn.onclick = stopGeneration;
-
-    wrap.appendChild(bbl);
-    wrap.appendChild(stopBtn);
-    row.appendChild(av);
-    row.appendChild(wrap);
-    inner.appendChild(row);
+    stopBtn.style.cssText = `display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:20px;background:${T.dangerBg};border:1px solid ${T.dangerBorder};color:${T.danger};cursor:pointer;font-size:12px;font-family:'Syne',sans-serif;font-weight:600;animation:stopPulse 2s ease-in-out infinite`;
+    stopBtn.innerHTML = ic.stop()+' Interrompre'; stopBtn.onclick = stopGeneration;
+    wrap.appendChild(bbl); wrap.appendChild(stopBtn);
+    row.appendChild(av); row.appendChild(wrap); inner.appendChild(row);
   }
-
-  // Scroll to bottom
-  const msgs = document.getElementById('messages');
-  setTimeout(() => msgs.scrollTop = msgs.scrollHeight, 50);
+  setTimeout(()=>{ const m=document.getElementById('messages'); m.scrollTop=m.scrollHeight; },50);
 }
 
-// ── SUGGESTIONS ───────────────────────────────────────────────────────────────
+// ── SUGGESTIONS ────────────────────────────────────────────────────────────
 function renderSuggestions() {
   const grid = document.getElementById('suggestions-grid');
   grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:500px;width:100%';
   grid.innerHTML = '';
   SUGGESTIONS.forEach(s => {
     const btn = document.createElement('button');
-    btn.className = 'suggestion-btn';
     btn.textContent = s;
     btn.style.cssText = `padding:13px 15px;border-radius:12px;background:${T.card};border:1px solid ${T.border};color:${T.subtext};cursor:pointer;text-align:left;font-size:13px;font-family:'Syne',sans-serif;font-weight:500;transition:all .2s;line-height:1.4;width:100%`;
-    btn.onmouseenter = () => btn.style.borderColor = T.accent;
-    btn.onmouseleave = () => btn.style.borderColor = T.border;
-    btn.onclick = () => sendMessage(s);
-    grid.appendChild(btn);
+    btn.onmouseenter=()=>btn.style.borderColor=T.accent; btn.onmouseleave=()=>btn.style.borderColor=T.border;
+    btn.onclick=()=>sendMessage(s); grid.appendChild(btn);
   });
 }
 
-// ── RENDER ALL ────────────────────────────────────────────────────────────────
-function renderAll() {
-  applyTheme();
-  renderMessages();
-  renderSuggestions();
-  updateActionBtn();
-}
+function renderAll() { applyTheme(); renderMessages(); renderSuggestions(); updateActionBtn(); }
 
-// ── SEND MESSAGE ──────────────────────────────────────────────────────────────
+// ── SEND MESSAGE ───────────────────────────────────────────────────────────
 async function sendMessage(text) {
   const ta = document.getElementById('msg-input');
-  const userText = (text || ta.value).trim();
-  if (!userText && state.attachments.length === 0) return;
-  if (state.loading) return;
+  const userText = (text||ta.value).trim();
+  if (!userText && S.attachments.length===0) return;
+  if (S.loading) return;
+  ta.value=''; ta.style.height='auto';
+  S.aborted=false; S.abortFlag=false; S.attachments=[];
 
-  ta.value = ''; ta.style.height = 'auto';
-  state.aborted = false; state.abortFlag = false;
-  state.attachments = [];
+  const userMsg = { role:'user', content:userText, id:Date.now() };
+  S.messages.push(userMsg);
+  S.loading=true;
 
-  const userMsg = { role:'user', content: userText || `📎 ${state.attachments[0]?.name}`, id: Date.now() };
-  state.messages.push(userMsg);
-  state.loading = true;
-
-  // Update conv title on first message
-  if (state.messages.length === 1) {
-    state.conversations = state.conversations.map(c =>
-      c.id === state.activeConv ? { ...c, title: userText.slice(0,30) + (userText.length>30?'…':'') } : c
-    );
+  if (S.messages.length===1) {
+    S.conversations = S.conversations.map(c=>c.id===S.activeConv?{...c,title:userText.slice(0,30)+(userText.length>30?'…':''),updatedAt:Date.now()}:c);
   }
-
   renderAll();
 
-  const apiMessages = state.messages.slice(0,-1).concat([userMsg]).map(m => ({ role:m.role, content:m.content }));
-
+  const apiMessages = S.messages.slice(0,-1).concat([userMsg]).map(m=>({role:m.role,content:m.content}));
   try {
     const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({
-        model: 'mistral-large-latest',
-        max_tokens: 1000,
-        system: 'Tu es SOMA, un assistant IA intelligent, créatif et bienveillant. Réponds en français sauf si l\'utilisateur parle une autre langue. Sois concis mais complet.',
-        messages: apiMessages,
-      }),
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ model:'mistral-large-latest', max_tokens:1000,
+        system:"Tu es SOMA, un assistant IA intelligent et bienveillant. Réponds en français sauf si l'utilisateur parle une autre langue.",
+        messages:apiMessages }),
     });
-    if (state.abortFlag) return;
-
-    const data = await res.json();
-    if (state.abortFlag) return;
-
-    // Debug — log the full response to console
-    console.log('[SOMA] Server response:', JSON.stringify(data));
-
-    if (!res.ok) {
-      const errMsg = data.error || data.message || `Erreur serveur (${res.status})`;
-      state.messages.push({ role:'assistant', content:`⚠️ ${errMsg}`, id: Date.now()+1 });
-      return;
-    }
-
-    // Server returns normalized format: { content: [{ type:'text', text:'...' }] }
-    // Also handle raw Mistral format: { choices: [{ message: { content:'...' } }] }
-    let txt = '';
-    if (data.content && data.content[0]?.text) {
-      txt = data.content[0].text;
-    } else if (data.choices && data.choices[0]?.message?.content) {
-      txt = data.choices[0].message.content;
-    } else if (typeof data === 'string') {
-      txt = data;
-    } else {
-      console.error('[SOMA] Unexpected response format:', data);
-      txt = '⚠️ Format de réponse inattendu. Vérifie la console.';
-    }
-
-    state.messages.push({ role:'assistant', content:txt, id: Date.now()+1 });
-
+    if (S.abortFlag) return;
+    const raw = await res.text();
+    if (S.abortFlag) return;
+    let data; try { data=JSON.parse(raw); } catch { data={}; }
+    console.log('[SOMA] Response:', data);
+    if (!res.ok) { S.messages.push({role:'assistant',content:`⚠️ ${data.error||'Erreur serveur ('+res.status+')'}`,id:Date.now()+1}); return; }
+    const txt = data.content?.[0]?.text || data.choices?.[0]?.message?.content || '⚠️ Réponse vide.';
+    S.messages.push({role:'assistant',content:txt,id:Date.now()+1});
+    // Auto-save to Firestore
+    S.conversations = S.conversations.map(c=>c.id===S.activeConv?{...c,messages:S.messages,updatedAt:Date.now()}:c);
+    saveCurrentConv();
   } catch(e) {
-    console.error('[SOMA] Fetch error:', e);
-    if (!state.abortFlag) {
-      const isOffline = !navigator.onLine;
-      const msg = isOffline
-        ? '📡 Pas de connexion internet.'
-        : '❌ Impossible de joindre le serveur. Il est peut-être en train de démarrer (Render Free peut prendre 50s). Réessaie dans quelques secondes.';
-      state.messages.push({ role:'assistant', content: msg, id: Date.now()+1 });
+    console.error('[SOMA]',e);
+    if (!S.abortFlag) {
+      const msg = !navigator.onLine ? '📡 Pas de connexion internet.' : '❌ Serveur inaccessible. Render Free peut prendre ~50s à démarrer. Réessaie.';
+      S.messages.push({role:'assistant',content:msg,id:Date.now()+1});
     }
-  } finally {
-    if (!state.abortFlag) state.loading = false;
-    renderAll();
-  }
+  } finally { if(!S.abortFlag) S.loading=false; renderAll(); }
 }
 
-function stopGeneration() {
-  state.abortFlag = true;
-  state.loading = false;
-  state.aborted = true;
-  renderAll();
-}
+function stopGeneration() { S.abortFlag=true; S.loading=false; S.aborted=true; renderAll(); }
 
-// ── MIC ───────────────────────────────────────────────────────────────────────
+// ── MIC ────────────────────────────────────────────────────────────────────
 function toggleMic() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { alert('La reconnaissance vocale n\'est pas supportée sur ce navigateur.'); return; }
-  if (state.isListening) {
-    state.recognition?.stop();
-    state.isListening = false;
-    updateActionBtn();
-    return;
-  }
-  const rec = new SR();
-  rec.lang = 'fr-FR'; rec.continuous = false; rec.interimResults = false;
-  rec.onresult = e => {
-    const t = e.results[0][0].transcript;
-    const ta = document.getElementById('msg-input');
-    ta.value = ta.value ? ta.value + ' ' + t : t;
-    autoResize(ta); updateActionBtn();
-  };
-  rec.onend = () => { state.isListening = false; updateActionBtn(); };
-  rec.onerror = () => { state.isListening = false; updateActionBtn(); };
-  rec.start();
-  state.recognition = rec;
-  state.isListening = true;
-  document.getElementById('msg-input').placeholder = '🎤 Écoute en cours…';
+  const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+  if (!SR) { toast('Reconnaissance vocale non supportée',true); return; }
+  if (S.isListening) { S.recognition?.stop(); S.isListening=false; updateActionBtn(); return; }
+  const rec = new SR(); rec.lang='fr-FR'; rec.continuous=false; rec.interimResults=false;
+  rec.onresult = e => { const ta=document.getElementById('msg-input'); ta.value=(ta.value?ta.value+' ':'')+e.results[0][0].transcript; autoResize(ta); updateActionBtn(); };
+  rec.onend = () => { S.isListening=false; document.getElementById('msg-input').placeholder='Message à SOMA…'; updateActionBtn(); };
+  rec.onerror = () => { S.isListening=false; updateActionBtn(); };
+  rec.start(); S.recognition=rec; S.isListening=true;
+  document.getElementById('msg-input').placeholder='🎤 Écoute en cours…';
   updateActionBtn();
 }
 
-// ── PLUS MENU ─────────────────────────────────────────────────────────────────
+// ── PLUS MENU ──────────────────────────────────────────────────────────────
 function togglePlusMenu() {
-  state.showPlusMenu = !state.showPlusMenu;
-  const pm = document.getElementById('plus-menu');
-  if (state.showPlusMenu) {
-    pm.style.cssText = `position:absolute;bottom:calc(100% + 8px);left:0;background:${T.modalBg};border:1px solid ${T.border};border-radius:16px;padding:8px;z-index:99;min-width:190px;box-shadow:0 12px 40px rgba(0,0,0,.35);animation:fadeUp .18s ease`;
+  S.showPlusMenu=!S.showPlusMenu;
+  const pm=document.getElementById('plus-menu');
+  if (S.showPlusMenu) {
+    pm.style.cssText=`position:absolute;bottom:calc(100% + 8px);left:0;background:${T.modalBg};border:1px solid ${T.border};border-radius:16px;padding:8px;z-index:99;min-width:190px;box-shadow:0 12px 40px rgba(0,0,0,.35);animation:fadeUp .18s ease`;
     pm.classList.remove('hidden');
-    pm.innerHTML = [
-      { ic: '🖼️', label:'Photo / Image',  accept:'image/*' },
-      { ic: '📎', label:'Fichier',         accept:'*/*' },
-      { ic: '📷', label:'Caméra',          accept:'image/*', capture:'environment' },
-    ].map((item,i) => `
-      <button class="plus-btn-item" onclick="triggerFile(${i})"
-        style="width:100%;display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;background:transparent;border:none;color:${T.text};cursor:pointer;font-size:14px;font-family:'Syne',sans-serif;font-weight:600;text-align:left;transition:background .15s"
+    pm.innerHTML=[{ic:'🖼️',label:'Photo / Image',i:0},{ic:'📎',label:'Fichier',i:1},{ic:'📷',label:'Caméra',i:2}].map(it=>`
+      <button class="plus-btn-item" onclick="triggerFile(${it.i})"
+        style="width:100%;display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;background:transparent;border:none;color:${T.text};cursor:pointer;font-size:14px;font-family:'Syne',sans-serif;font-weight:600;text-align:left"
         onmouseenter="this.style.background='${T.cardHover}'" onmouseleave="this.style.background='transparent'">
-        <span style="color:${T.accent}">${item.ic}</span>${item.label}
+        <span style="color:${T.accent}">${it.ic}</span>${it.label}
       </button>`).join('');
-
-    // hidden file inputs
-    pm.innerHTML += `
-      <input id="fi-0" type="file" accept="image/*" style="display:none" onchange="handleFile(this,0)">
+    pm.innerHTML+=`<input id="fi-0" type="file" accept="image/*" style="display:none" onchange="handleFile(this,0)">
       <input id="fi-1" type="file" accept="*/*" style="display:none" onchange="handleFile(this,1)">
       <input id="fi-2" type="file" accept="image/*" capture="environment" style="display:none" onchange="handleFile(this,2)">`;
-  } else {
-    pm.classList.add('hidden');
-  }
-  // Update plus btn style
-  const pb = document.getElementById('plus-btn');
-  pb.style.borderColor = state.showPlusMenu ? T.accent : T.border;
-  pb.style.color = state.showPlusMenu ? T.accent : T.subtext;
+  } else { pm.classList.add('hidden'); }
+  document.getElementById('plus-btn').style.borderColor = S.showPlusMenu?T.accent:T.border;
+  document.getElementById('plus-btn').style.color = S.showPlusMenu?T.accent:T.subtext;
 }
-
 function triggerFile(i) { document.getElementById('fi-'+i)?.click(); }
-function handleFile(input, type) {
-  if (input.files[0]) {
-    state.attachments.push({ file: input.files[0], type });
-    renderAttachments();
-    updateActionBtn();
-  }
-  state.showPlusMenu = false;
-  document.getElementById('plus-menu').classList.add('hidden');
+function handleFile(input,type) {
+  if(input.files[0]){ S.attachments.push({file:input.files[0],type}); updateActionBtn(); }
+  S.showPlusMenu=false; document.getElementById('plus-menu').classList.add('hidden');
 }
 
-function renderAttachments() {
-  const el = document.getElementById('attach-preview');
-  el.style.cssText = state.attachments.length ? `max-width:700px;margin:0 auto 8px;display:flex;gap:8px;flex-wrap:wrap` : '';
-  el.innerHTML = state.attachments.map((a,i) => `
-    <div style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;background:${T.card};border:1px solid ${T.border};font-size:12px;color:${T.text}">
-      ${a.type===0?'🖼️':'📎'} ${a.file.name.slice(0,20)}
-      <span onclick="removeAttach(${i})" style="cursor:pointer;color:${T.muted};margin-left:2px">×</span>
-    </div>`).join('');
+// ── CONTEXT MENU ───────────────────────────────────────────────────────────
+function showCtxMenu(convId,x,y) {
+  const el=document.getElementById('ctx-menu');
+  const conv=S.conversations.find(c=>c.id===convId);
+  el.style.cssText=`position:fixed;top:${Math.min(y,window.innerHeight-180)}px;left:${Math.min(x,window.innerWidth-200)}px;background:${T.modalBg};border:1px solid ${T.border};border-radius:14px;padding:6px;z-index:300;min-width:180px;box-shadow:0 12px 40px rgba(0,0,0,.4);animation:fadeUp .15s ease`;
+  el.classList.remove('hidden'); S.ctxMenu={convId};
+  el.innerHTML=[
+    {ic:ic.pin(),label:conv.pinned?'Désépingler':'Épingler',col:T.accent,fn:`pinConv(${convId})`},
+    {ic:ic.edit(),label:'Renommer',col:T.text,fn:`startRename(${convId})`},
+    {ic:ic.share(),label:'Partager',col:T.cyan,fn:`shareConv(${convId})`},
+    {ic:ic.trash(),label:'Supprimer',col:T.danger,fn:`deleteConv(${convId})`},
+  ].map(item=>`<button class="ctx-btn" onclick="${item.fn};closeCtxMenu()"
+    style="width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;background:transparent;border:none;color:${item.col};cursor:pointer;font-size:13px;font-family:'Syne',sans-serif;font-weight:600;text-align:left"
+    onmouseenter="this.style.background='${T.cardHover}'" onmouseleave="this.style.background='transparent'">
+    ${item.ic}${item.label}
+  </button>`).join('');
 }
-function removeAttach(i) { state.attachments.splice(i,1); renderAttachments(); updateActionBtn(); }
+function closeCtxMenu() { document.getElementById('ctx-menu').classList.add('hidden'); S.ctxMenu=null; }
 
-// ── CONTEXT MENU ──────────────────────────────────────────────────────────────
-function showCtxMenu(convId, x, y) {
-  const el = document.getElementById('ctx-menu');
-  const conv = state.conversations.find(c=>c.id===convId);
-  el.style.cssText = `position:fixed;top:${Math.min(y,window.innerHeight-180)}px;left:${Math.min(x,window.innerWidth-200)}px;background:${T.modalBg};border:1px solid ${T.border};border-radius:14px;padding:6px;z-index:300;min-width:180px;box-shadow:0 12px 40px rgba(0,0,0,.4);animation:fadeUp .15s ease`;
-  el.classList.remove('hidden');
-  state.ctxMenu = { convId, x, y };
-
-  el.innerHTML = [
-    { ic: icon.pin(),   label: conv.pinned?'Désépingler':'Épingler', col: T.accent,  fn: `pinConv(${convId})` },
-    { ic: icon.edit(),  label: 'Renommer',  col: T.text,   fn: `startRename(${convId})` },
-    { ic: icon.share(), label: 'Partager',  col: T.cyan,   fn: `shareConv(${convId})` },
-    { ic: icon.trash(), label: 'Supprimer', col: T.danger, fn: `deleteConv(${convId})` },
-  ].map(item => `
-    <button class="ctx-btn" onclick="${item.fn};closeCtxMenu()"
-      style="width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;background:transparent;border:none;color:${item.col};cursor:pointer;font-size:13px;font-family:'Syne',sans-serif;font-weight:600;text-align:left;transition:background .15s"
-      onmouseenter="this.style.background='${T.cardHover}'" onmouseleave="this.style.background='transparent'">
-      ${item.ic}${item.label}
-    </button>`).join('');
-}
-function closeCtxMenu() { document.getElementById('ctx-menu').classList.add('hidden'); state.ctxMenu = null; }
-
-// ── CONV ACTIONS ──────────────────────────────────────────────────────────────
+// ── CONV ACTIONS ───────────────────────────────────────────────────────────
 function newConversation() {
-  const id = Date.now();
-  state.conversations.unshift({ id, title:'Nouvelle conversation', pinned:false });
-  state.activeConv = id; state.messages = []; state.aborted = false;
-  renderAll();
+  const id=Date.now();
+  S.conversations.unshift({id,title:'Nouvelle conversation',pinned:false,messages:[],updatedAt:Date.now()});
+  S.activeConv=id; S.messages=[]; S.aborted=false; renderAll();
 }
 function deleteConv(id) {
-  state.conversations = state.conversations.filter(c=>c.id!==id);
-  if (state.activeConv===id) { state.messages = []; state.activeConv = state.conversations[0]?.id||null; }
+  if(S.firebaseUser && window.SOMA_AUTH) window.SOMA_AUTH.deleteConv(S.firebaseUser.uid,id);
+  S.conversations=S.conversations.filter(c=>c.id!==id);
+  if(S.activeConv===id){ S.messages=[]; S.activeConv=S.conversations[0]?.id||null; }
   renderAll();
 }
-function pinConv(id) {
-  state.conversations = state.conversations.map(c=>c.id===id?{...c,pinned:!c.pinned}:c);
-  renderAll();
-}
+function pinConv(id) { S.conversations=S.conversations.map(c=>c.id===id?{...c,pinned:!c.pinned}:c); renderAll(); }
 function shareConv(id) {
-  const conv = state.conversations.find(c=>c.id===id);
-  const text = `Conversation SOMA: "${conv.title}"`;
-  if (navigator.share) navigator.share({title:'SOMA',text}).catch(()=>{});
-  else navigator.clipboard?.writeText(text).then(()=>alert('Copié !'));
+  const conv=S.conversations.find(c=>c.id===id);
+  const text=`Conversation SOMA: "${conv.title}"`;
+  if(navigator.share) navigator.share({title:'SOMA',text}).catch(()=>{});
+  else navigator.clipboard?.writeText(text).then(()=>toast('📋 Lien copié !'));
 }
-function startRename(id) {
-  const conv = state.conversations.find(c=>c.id===id);
-  state.renamingId = id; state.renameVal = conv.title;
-  renderConvList();
-}
+function startRename(id) { const conv=S.conversations.find(c=>c.id===id); S.renamingId=id; S.renameVal=conv.title; renderConvList(); }
 function applyRename() {
-  if (state.renameVal.trim()) {
-    state.conversations = state.conversations.map(c=>c.id===state.renamingId?{...c,title:state.renameVal.trim()}:c);
-  }
-  state.renamingId = null; renderConvList();
+  if(S.renameVal.trim()) S.conversations=S.conversations.map(c=>c.id===S.renamingId?{...c,title:S.renameVal.trim()}:c);
+  S.renamingId=null; renderConvList();
 }
 
-// ── TEXTAREA AUTO-RESIZE ──────────────────────────────────────────────────────
-function autoResize(ta) {
-  ta.style.height = 'auto';
-  ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
-}
+function autoResize(ta) { ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight,160)+'px'; }
 
-// ── DRAWER ────────────────────────────────────────────────────────────────────
+// ── DRAWER ─────────────────────────────────────────────────────────────────
 function openDrawer() {
-  state.drawerOpen = true;
-  const ov = document.getElementById('drawer-overlay');
-  const dr = document.getElementById('drawer');
-  ov.style.cssText = `position:fixed;inset:0;background:${T.overlay};z-index:200;animation:fadeIn .2s ease`;
-  ov.classList.remove('hidden');
-  ov.onclick = closeDrawer;
-
-  dr.style.cssText = `position:fixed;top:0;right:0;bottom:0;width:280px;background:${T.modalBg};border-left:1px solid ${T.border};display:flex;flex-direction:column;z-index:201;animation:slideRight .25s cubic-bezier(.4,0,.2,1);box-shadow:-12px 0 40px rgba(0,0,0,.3)`;
+  S.drawerOpen=true;
+  const ov=document.getElementById('drawer-overlay');
+  const dr=document.getElementById('drawer');
+  ov.style.cssText=`position:fixed;inset:0;background:${T.overlay};z-index:200;animation:fadeIn .2s ease`;
+  ov.classList.remove('hidden'); ov.onclick=closeDrawer;
+  dr.style.cssText=`position:fixed;top:0;right:0;bottom:0;width:290px;background:${T.modalBg};border-left:1px solid ${T.border};display:flex;flex-direction:column;z-index:201;animation:slideRight .25s cubic-bezier(.4,0,.2,1);box-shadow:-12px 0 40px rgba(0,0,0,.3)`;
   dr.classList.remove('hidden');
-  dr.innerHTML = `
+  dr.innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 18px 14px;border-bottom:1px solid ${T.border}">
       <div style="display:flex;align-items:center;gap:10px">
         <div style="width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,${T.accent},${T.accentDark});display:flex;align-items:center;justify-content:center;font-size:14px;color:#0A0A0F;font-weight:800">✦</div>
         <span style="font-weight:800;font-size:16px;color:${T.text}">SOMA</span>
       </div>
-      <button onclick="closeDrawer()" style="background:none;border:none;cursor:pointer;color:${T.subtext};display:flex">${icon.close()}</button>
+      <button onclick="closeDrawer()" style="background:none;border:none;cursor:pointer;color:${T.subtext};display:flex">${ic.close()}</button>
     </div>
     <div style="flex:1;padding:12px;display:flex;flex-direction:column;gap:6px">
       ${[
-        {id:'about',   label:'À propos',   desc:'Version, stack technique', ic:icon.info()},
-        {id:'settings',label:'Paramètres', desc:'Thème, langue, API',        ic:icon.gear()},
-        {id:'account', label:'Compte',     desc: state.user?state.user.name:'Connexion / Inscription', ic:icon.user()},
+        {id:'about',label:'À propos',desc:'Version, stack technique',ico:ic.info()},
+        {id:'settings',label:'Paramètres',desc:'Thème, langue, API',ico:ic.gear()},
+        {id:'account',label:'Compte',desc:S.firebaseUser?userName():'Connexion / Inscription',ico:ic.user()},
       ].map(item=>`
-        <button onclick="openPanel('${item.id}')" style="width:100%;padding:14px 16px;border-radius:14px;background:transparent;border:1px solid ${T.border};display:flex;align-items:center;gap:14px;cursor:pointer;color:${T.text};font-family:'Syne',sans-serif;transition:background .2s;text-align:left"
+        <button onclick="openPanel('${item.id}')"
+          style="width:100%;padding:14px 16px;border-radius:14px;background:transparent;border:1px solid ${T.border};display:flex;align-items:center;gap:14px;cursor:pointer;color:${T.text};font-family:'Syne',sans-serif;transition:background .2s;text-align:left"
           onmouseenter="this.style.background='${T.cardHover}'" onmouseleave="this.style.background='transparent'">
-          <div style="width:38px;height:38px;border-radius:10px;background:${T.card};display:flex;align-items:center;justify-content:center;color:${T.accent};flex-shrink:0">${item.ic}</div>
+          <div style="width:38px;height:38px;border-radius:10px;background:${T.card};display:flex;align-items:center;justify-content:center;color:${T.accent};flex-shrink:0">${item.ico}</div>
           <div><div style="font-size:14px;font-weight:700">${item.label}</div><div style="font-size:11px;color:${T.subtext};margin-top:2px">${item.desc}</div></div>
           <div style="margin-left:auto;color:${T.muted};font-size:16px">›</div>
         </button>`).join('')}
@@ -837,243 +732,205 @@ function openDrawer() {
     <div style="padding:14px 16px;border-top:1px solid ${T.border};display:flex;align-items:center;justify-content:space-between">
       <span style="font-size:12px;color:${T.subtext}">Thème</span>
       <button onclick="toggleTheme()" style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;background:${T.card};border:1px solid ${T.border};color:${T.text};cursor:pointer;font-size:12px;font-weight:600;font-family:'Syne',sans-serif">
-        ${state.theme==='dark' ? icon.moon()+'Sombre' : icon.sun()+'Clair'}
+        ${S.theme==='dark'?ic.moon()+'Sombre':ic.sun()+'Clair'}
       </button>
     </div>`;
 }
-function closeDrawer() {
-  document.getElementById('drawer-overlay').classList.add('hidden');
-  document.getElementById('drawer').classList.add('hidden');
-  state.drawerOpen = false;
-}
+function closeDrawer() { document.getElementById('drawer-overlay').classList.add('hidden'); document.getElementById('drawer').classList.add('hidden'); S.drawerOpen=false; }
 
-// ── FULL PANELS ───────────────────────────────────────────────────────────────
+// ── FULL PANELS ────────────────────────────────────────────────────────────
 function openPanel(name) {
   closeDrawer();
-  state.fullPanel = name;
-  const el = document.getElementById('panel-'+name);
+  S.fullPanel=name;
+  const el=document.getElementById('panel-'+name);
   el.classList.remove('hidden');
-  el.style.cssText = `position:fixed;inset:0;background:${T.modalBg};z-index:500;display:flex;flex-direction:column;animation:slideUp .28s cubic-bezier(.4,0,.2,1)`;
+  el.style.cssText=`position:fixed;inset:0;background:${T.modalBg};z-index:500;display:flex;flex-direction:column;animation:slideUp .28s cubic-bezier(.4,0,.2,1)`;
+  const titles={about:'À propos',settings:'Paramètres',account:'Compte'};
+  const hdr=`<div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid ${T.border}">
+    <button onclick="closePanel('${name}')" style="width:38px;height:38px;border-radius:10px;background:${T.card};border:1px solid ${T.border};color:${T.text};cursor:pointer;display:flex;align-items:center;justify-content:center">${ic.back()}</button>
+    <span style="font-size:17px;font-weight:800;color:${T.text}">${titles[name]}</span>
+  </div><div style="flex:1;overflow-y:auto;padding:24px 20px"><div style="max-width:520px;margin:0 auto">`;
 
-  const header = `<div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid ${T.border}">
-    <button onclick="closePanel('${name}')" style="width:38px;height:38px;border-radius:10px;background:${T.card};border:1px solid ${T.border};color:${T.text};cursor:pointer;display:flex;align-items:center;justify-content:center">${icon.back()}</button>
-    <span style="font-size:17px;font-weight:800;color:${T.text}">${{about:'À propos',settings:'Paramètres',account:'Compte'}[name]}</span>
+  if (name==='about') el.innerHTML=hdr+aboutHTML()+'</div></div>';
+  else if (name==='settings') { el.innerHTML=hdr+settingsHTML()+'</div></div>'; bindSettingsEvents(); }
+  else if (name==='account') { el.innerHTML=hdr+accountHTML()+'</div></div>'; bindAccountEvents(); }
+}
+function closePanel(name) { document.getElementById('panel-'+name).classList.add('hidden'); S.fullPanel=null; }
+
+// ── ABOUT ──────────────────────────────────────────────────────────────────
+function aboutHTML() { return `
+  <div style="text-align:center;padding:28px 0 20px">
+    <div style="font-size:60px;background:linear-gradient(135deg,${T.accent},${T.cyan});-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px">✦</div>
+    <div style="font-size:26px;font-weight:800;color:${T.text};letter-spacing:-1px">SOMA</div>
+    <div style="font-size:12px;color:${T.accent};font-weight:700;letter-spacing:2px;margin-top:4px">VERSION 1.0.0 · BETA</div>
+    <p style="font-size:14px;color:${T.subtext};margin-top:14px;line-height:1.8;max-width:360px;margin-left:auto;margin-right:auto">SOMA est un assistant IA conçu pour être rapide, intelligent et beau.</p>
   </div>
-  <div style="flex:1;overflow-y:auto;padding:24px 20px">
-    <div style="max-width:520px;margin:0 auto">`;
+  <div style="background:${T.card};border-radius:16px;border:1px solid ${T.border};overflow:hidden">
+    ${[['Modèle IA','Intelligence Artificielle'],['Backend','Render (Node.js)'],['Auth','Firebase (Google + Email)'],['Base de données','Cloud Firestore'],['Hébergement','GitHub Pages'],['Firebase Project','soma-ai-a7322'],['Développé par','Toi + Claude 🤝']].map(([k,v],i,a)=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;${i<a.length-1?'border-bottom:1px solid '+T.border:''}">
+      <span style="font-size:13px;color:${T.subtext}">${k}</span>
+      <span style="font-size:13px;color:${T.text};font-weight:700">${v}</span>
+    </div>`).join('')}
+  </div>`; }
 
-  if (name==='about') {
-    el.innerHTML = header + `
-      <div style="text-align:center;padding:28px 0 20px">
-        <div style="font-size:60px;background:linear-gradient(135deg,${T.accent},${T.cyan});-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px">✦</div>
-        <div style="font-size:26px;font-weight:800;color:${T.text};letter-spacing:-1px">SOMA</div>
-        <div style="font-size:12px;color:${T.accent};font-weight:700;letter-spacing:2px;margin-top:4px">VERSION 1.0.0 · BETA</div>
-        <p style="font-size:14px;color:${T.subtext};margin-top:14px;line-height:1.8;max-width:360px;margin-left:auto;margin-right:auto">SOMA est un assistant IA conversationnel alimenté par Mistral Large. Conçu pour être rapide, intelligent et beau.</p>
+// ── SETTINGS ───────────────────────────────────────────────────────────────
+function settingsHTML() { return `
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:${T.muted};text-transform:uppercase">Apparence</div>
+    <div style="background:${T.card};border-radius:16px;border:1px solid ${T.border};overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid ${T.border}">
+        <div><div style="font-size:14px;font-weight:600;color:${T.text}">Thème</div>
+        <div style="font-size:12px;color:${T.subtext};margin-top:2px">${S.theme==='dark'?'Mode sombre':'Mode clair'}</div></div>
+        <button id="s-theme" class="toggle-track" style="background:${S.theme==='dark'?'#252535':'#D8D4CC'}">
+          <div class="toggle-thumb" style="left:${S.theme==='dark'?'3px':'27px'};background:${S.theme==='dark'?T.accent:'#FFF'}">${S.theme==='dark'?ic.moon():ic.sun()}</div>
+        </button>
       </div>
-      <div style="background:${T.card};border-radius:16px;border:1px solid ${T.border};overflow:hidden">
-        ${[['Modèle IA','Mistral Large'],['Backend','Render (Node.js)'],['Auth','Firebase'],['Base de données','Firestore'],['Hébergement','GitHub Pages + Render'],['Développé par','Toi + Claude 🤝']].map(([k,v],i,a)=>`
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;${i<a.length-1?'border-bottom:1px solid '+T.border:''}">
-          <span style="font-size:13px;color:${T.subtext}">${k}</span>
-          <span style="font-size:13px;color:${T.text};font-weight:700">${v}</span>
-        </div>`).join('')}
+      <div style="padding:14px 18px;display:flex;gap:10px">
+        ${['dark','light'].map(t=>`<button onclick="if('${t}'!==S.theme){toggleTheme();setTimeout(()=>openPanel('settings'),50)}" style="flex:1;padding:12px;border-radius:12px;cursor:pointer;background:${t==='dark'?'#0A0A0F':'#F5F4F0'};border:2px solid ${S.theme===t?T.accent:T.border};transition:all .2s">
+          <div style="width:100%;height:7px;border-radius:3px;background:${t==='dark'?'#1A1A28':'#DDDAD2'};margin-bottom:5px"></div>
+          <div style="width:60%;height:5px;border-radius:2px;background:${t==='dark'?'#252535':'#C8C4BC'};margin-bottom:8px"></div>
+          <div style="font-size:11px;color:${t==='dark'?'#8888AA':'#6B6660'};font-weight:700">${t==='dark'?'🌙 Sombre':'☀️ Clair'}</div>
+        </button>`).join('')}
       </div>
-    </div></div>`;
-  }
-
-  else if (name==='settings') {
-    el.innerHTML = header + renderSettingsHTML() + `</div></div>`;
-    bindSettingsEvents();
-  }
-
-  else if (name==='account') {
-    el.innerHTML = header + renderAccountHTML() + `</div></div>`;
-    bindAccountEvents();
-  }
-}
-
-function closePanel(name) {
-  document.getElementById('panel-'+name).classList.add('hidden');
-  state.fullPanel = null;
-}
-
-// ── SETTINGS PANEL HTML ───────────────────────────────────────────────────────
-function renderSettingsHTML() {
-  return `
-    <div style="display:flex;flex-direction:column;gap:16px">
-      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:${T.muted};text-transform:uppercase">Apparence</div>
-      <div style="background:${T.card};border-radius:16px;border:1px solid ${T.border};overflow:hidden">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid ${T.border}">
-          <div><div style="font-size:14px;font-weight:600;color:${T.text}">Thème</div>
-          <div style="font-size:12px;color:${T.subtext};margin-top:2px">${state.theme==='dark'?'Mode sombre':'Mode clair'}</div></div>
-          <button id="s-theme-toggle" class="toggle-track" style="background:${state.theme==='dark'?'#252535':'#D8D4CC'}">
-            <div class="toggle-thumb" style="left:${state.theme==='dark'?'3px':'27px'};background:${state.theme==='dark'?T.accent:'#FFF'}">${state.theme==='dark'?icon.moon():icon.sun()}</div>
-          </button>
-        </div>
-        <div style="padding:14px 18px;display:flex;gap:10px">
-          ${['dark','light'].map(t=>`
-          <button onclick="if('${t}'!==state.theme)toggleTheme()" style="flex:1;padding:12px;border-radius:12px;cursor:pointer;background:${t==='dark'?'#0A0A0F':'#F5F4F0'};border:2px solid ${state.theme===t?T.accent:T.border};transition:all .2s">
-            <div style="width:100%;height:7px;border-radius:3px;background:${t==='dark'?'#1A1A28':'#DDDAD2'};margin-bottom:5px"></div>
-            <div style="width:60%;height:5px;border-radius:2px;background:${t==='dark'?'#252535':'#C8C4BC'};margin-bottom:8px"></div>
-            <div style="font-size:11px;color:${t==='dark'?'#8888AA':'#6B6660'};font-weight:700">${t==='dark'?'🌙 Sombre':'☀️ Clair'}</div>
-          </button>`).join('')}
-        </div>
+    </div>
+    <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:${T.muted};text-transform:uppercase">Préférences</div>
+    <div style="background:${T.card};border-radius:16px;border:1px solid ${T.border};overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid ${T.border}">
+        <div><div style="font-size:14px;font-weight:600;color:${T.text}">Sauvegarder l'historique</div><div style="font-size:12px;color:${T.subtext};margin-top:2px">Via Firebase Firestore</div></div>
+        <button id="s-hist" class="toggle-track" style="background:${S.historyOn?T.accent:'#252535'}"><div class="toggle-thumb" style="left:${S.historyOn?'27px':'3px'};background:#FFF"></div></button>
       </div>
-      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:${T.muted};text-transform:uppercase">Préférences</div>
-      <div style="background:${T.card};border-radius:16px;border:1px solid ${T.border};overflow:hidden">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid ${T.border}">
-          <div><div style="font-size:14px;font-weight:600;color:${T.text}">Notifications</div><div style="font-size:12px;color:${T.subtext};margin-top:2px">Alertes pour les nouvelles réponses</div></div>
-          <button id="s-notif" class="toggle-track" style="background:${state.notifOn?T.accent:'#252535'}"><div class="toggle-thumb" style="left:${state.notifOn?'27px':'3px'};background:#FFF"></div></button>
-        </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px">
-          <div><div style="font-size:14px;font-weight:600;color:${T.text}">Sauvegarder l'historique</div><div style="font-size:12px;color:${T.subtext};margin-top:2px">Conserver les conversations</div></div>
-          <button id="s-hist" class="toggle-track" style="background:${state.historyOn?T.accent:'#252535'}"><div class="toggle-thumb" style="left:${state.historyOn?'27px':'3px'};background:#FFF"></div></button>
-        </div>
-      </div>
-      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:${T.muted};text-transform:uppercase">Langue</div>
-      <div style="background:${T.card};border-radius:16px;border:1px solid ${T.border};padding:4px;display:flex;gap:4px">
-        ${[['fr','🇫🇷 Français'],['en','🇬🇧 English'],['es','🇪🇸 Español']].map(([code,label])=>`
-        <button onclick="state.lang='${code}';openPanel('settings')" style="flex:1;padding:10px 8px;border-radius:12px;background:${state.lang===code?T.accent+'22':'transparent'};border:${state.lang===code?'1px solid '+T.accent+'66':'1px solid transparent'};color:${state.lang===code?T.accent:T.subtext};cursor:pointer;font-size:12px;font-weight:600;font-family:'Syne',sans-serif;transition:all .2s">${label}</button>`).join('')}
-      </div>
-      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:${T.muted};text-transform:uppercase">Serveur & API</div>
-      <div style="background:${T.card};border-radius:16px;border:1px solid ${T.border};overflow:hidden">
-        ${[['Endpoint','soma-server.onrender.com'],['Modèle','mistral-large-latest'],['Proxy API','Activé ✓'],['Clé API','Sécurisée côté serveur ✓'],['CORS','Configuré ✓']].map(([k,v],i,a)=>`
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:13px 18px;${i<a.length-1?'border-bottom:1px solid '+T.border:''}">
-          <span style="font-size:13px;color:${T.subtext}">${k}</span>
-          <span style="font-size:13px;color:${T.cyan};font-weight:700">${v}</span>
-        </div>`).join('')}
-      </div>
-    </div>`;
-}
+    </div>
+    <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:${T.muted};text-transform:uppercase">Serveur & API</div>
+    <div style="background:${T.card};border-radius:16px;border:1px solid ${T.border};overflow:hidden">
+      ${[['Endpoint','soma-server.onrender.com'],['Auth','Firebase ✓'],['Firestore','soma-ai-a7322 ✓']].map(([k,v],i,a)=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:13px 18px;${i<a.length-1?'border-bottom:1px solid '+T.border:''}">
+        <span style="font-size:13px;color:${T.subtext}">${k}</span>
+        <span style="font-size:13px;color:${T.cyan};font-weight:700">${v}</span>
+      </div>`).join('')}
+    </div>
+  </div>`; }
 
 function bindSettingsEvents() {
-  document.getElementById('s-theme-toggle')?.addEventListener('click', () => { toggleTheme(); setTimeout(()=>openPanel('settings'),10); });
-  document.getElementById('s-notif')?.addEventListener('click', () => { state.notifOn=!state.notifOn; openPanel('settings'); });
-  document.getElementById('s-hist')?.addEventListener('click', () => { state.historyOn=!state.historyOn; openPanel('settings'); });
+  document.getElementById('s-theme')?.addEventListener('click',()=>{ toggleTheme(); setTimeout(()=>openPanel('settings'),50); });
+  document.getElementById('s-hist')?.addEventListener('click',()=>{ S.historyOn=!S.historyOn; openPanel('settings'); });
 }
 
-// ── ACCOUNT PANEL HTML ────────────────────────────────────────────────────────
-function renderAccountHTML() {
-  if (state.user) return `
+// ── ACCOUNT ────────────────────────────────────────────────────────────────
+function accountHTML() {
+  if (S.firebaseUser) return `
     <div style="display:flex;flex-direction:column;gap:16px">
       <div style="text-align:center;padding:28px 0 16px">
-        <div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,${T.cyan},#3BBFA3);display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;color:#0A0A0F;margin:0 auto 14px">${state.user.name[0].toUpperCase()}</div>
-        <div style="font-size:20px;font-weight:800;color:${T.text}">${state.user.name}</div>
-        <div style="font-size:13px;color:${T.subtext};margin-top:4px">${state.user.email}</div>
-        <div style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:4px 12px;border-radius:20px;background:${T.cyan}18;border:1px solid ${T.cyan}44;color:${T.cyan};font-size:12px;font-weight:700">${state.user.method==='google'?'🟢 Google':'📧 Email'} · Connecté</div>
+        <div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,${T.cyan},#3BBFA3);display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;color:#0A0A0F;margin:0 auto 14px">${userInitial()}</div>
+        <div style="font-size:20px;font-weight:800;color:${T.text}">${userName()}</div>
+        <div style="font-size:13px;color:${T.subtext};margin-top:4px">${S.firebaseUser.email}</div>
+        <div style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:4px 12px;border-radius:20px;background:${T.cyan}18;border:1px solid ${T.cyan}44;color:${T.cyan};font-size:12px;font-weight:700">${userMethod()==='google'?'🟢 Google':'📧 Email'} · Connecté via Firebase</div>
       </div>
       <div style="background:${T.card};border-radius:16px;border:1px solid ${T.border};overflow:hidden">
-        ${[['Plan','Gratuit'],['Conversations','Illimitées'],['Membre depuis','Mai 2025']].map(([k,v],i,a)=>`
+        ${[['UID Firebase',S.firebaseUser.uid.slice(0,16)+'…'],['Plan','Gratuit'],['Conversations','Illimitées']].map(([k,v],i,a)=>`
         <div style="display:flex;justify-content:space-between;padding:14px 18px;${i<a.length-1?'border-bottom:1px solid '+T.border:''}">
           <span style="font-size:13px;color:${T.subtext}">${k}</span><span style="font-size:13px;color:${T.text};font-weight:700">${v}</span>
         </div>`).join('')}
       </div>
-      <button onclick="state.user=null;renderAll();openPanel('account')" style="width:100%;padding:14px;border-radius:14px;background:${T.dangerBg};border:1px solid ${T.dangerBorder};color:${T.danger};cursor:pointer;font-size:14px;font-weight:700;font-family:'Syne',sans-serif;display:flex;align-items:center;justify-content:center;gap:8px">${icon.logout()}Se déconnecter</button>
+      <button onclick="doSignOut()" style="width:100%;padding:14px;border-radius:14px;background:${T.dangerBg};border:1px solid ${T.dangerBorder};color:${T.danger};cursor:pointer;font-size:14px;font-weight:700;font-family:'Syne',sans-serif;display:flex;align-items:center;justify-content:center;gap:8px">${ic.logout()}Se déconnecter</button>
     </div>`;
 
-  return `
-    <div style="display:flex;flex-direction:column;gap:14px" id="auth-inner">
-      <div style="text-align:center;padding:20px 0 8px">
-        <div style="font-size:44px;margin-bottom:8px">👋</div>
-        <div style="font-size:20px;font-weight:800;color:${T.text}">Bienvenue sur SOMA</div>
-        <p style="font-size:13px;color:${T.subtext};margin-top:8px;line-height:1.7">Connecte-toi pour sauvegarder tes conversations.</p>
-      </div>
-      <button onclick="loginWith('google')" style="width:100%;padding:14px 18px;border-radius:14px;background:${T.card};border:1px solid ${T.border};display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;font-size:14px;font-weight:700;color:${T.text};font-family:'Syne',sans-serif;margin-bottom:4px">${icon.google()}Continuer avec Google</button>
-      <button onclick="showEmailForm('login')" style="width:100%;padding:14px 18px;border-radius:14px;background:${T.card};border:1px solid ${T.border};display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;font-size:14px;font-weight:700;color:${T.text};font-family:'Syne',sans-serif">📧 Continuer avec Email</button>
-      <div style="text-align:center;font-size:13px;color:${T.subtext}">Pas de compte ? <span onclick="showEmailForm('register')" style="color:${T.accent};cursor:pointer;font-weight:700">Créer un compte</span></div>
-    </div>`;
-}
+  return `<div style="display:flex;flex-direction:column;gap:14px" id="auth-inner">
+    <div style="text-align:center;padding:24px 0 8px">
+      <div style="font-size:44px;margin-bottom:8px">👋</div>
+      <div style="font-size:20px;font-weight:800;color:${T.text}">Bienvenue sur SOMA</div>
+      <p style="font-size:13px;color:${T.subtext};margin-top:8px;line-height:1.7">Connecte-toi pour sauvegarder tes conversations dans Firebase.</p>
+    </div>
+    <button onclick="doGoogleLogin()" id="btn-google" style="width:100%;padding:14px 18px;border-radius:14px;background:${T.card};border:1px solid ${T.border};display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;font-size:14px;font-weight:700;color:${T.text};font-family:'Syne',sans-serif;margin-bottom:4px">${ic.google()}Continuer avec Google</button>
+    <button onclick="showEmailForm('login')" style="width:100%;padding:14px 18px;border-radius:14px;background:${T.card};border:1px solid ${T.border};display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;font-size:14px;font-weight:700;color:${T.text};font-family:'Syne',sans-serif">📧 Continuer avec Email</button>
+    <div style="text-align:center;font-size:13px;color:${T.subtext}">Pas de compte ? <span onclick="showEmailForm('register')" style="color:${T.accent};cursor:pointer;font-weight:700">Créer un compte</span></div>
+    <p style="text-align:center;font-size:11px;color:${T.muted}">🔒 Authentification sécurisée par Firebase</p>
+  </div>`; }
 
 function bindAccountEvents() {}
 
+async function doGoogleLogin() {
+  if (!window.SOMA_AUTH) { toast('Firebase non chargé',true); return; }
+  const btn = document.getElementById('btn-google');
+  if (btn) { btn.textContent = '⏳ Connexion…'; btn.disabled=true; }
+  try {
+    await window.SOMA_AUTH.signInGoogle();
+    closePanel('account');
+  } catch(e) {
+    console.error(e);
+    toast('Erreur Google: '+e.message, true);
+    if (btn) { btn.innerHTML=ic.google()+'Continuer avec Google'; btn.disabled=false; }
+  }
+}
+
+async function doSignOut() {
+  if (!window.SOMA_AUTH) return;
+  await window.SOMA_AUTH.signOut();
+  S.firebaseUser=null; S.conversations=[{id:1,title:'Nouvelle conversation',pinned:false,messages:[],updatedAt:Date.now()}]; S.messages=[]; S.activeConv=1;
+  toast('👋 Déconnecté');
+  closePanel('account'); renderAll();
+}
+
 function showEmailForm(mode) {
-  const inner = document.getElementById('auth-inner');
+  const inner=document.getElementById('auth-inner');
   if (!inner) return;
-  inner.innerHTML = `
+  inner.innerHTML=`
     <div style="padding:16px 0 8px">
       <div style="font-size:20px;font-weight:800;color:${T.text};margin-bottom:6px">${mode==='login'?'Connexion':'Créer un compte'}</div>
-      <p style="font-size:13px;color:${T.subtext}">${mode==='login'?'Content de te revoir !':'Rejoins SOMA gratuitement'}</p>
     </div>
     <div id="auth-err" style="display:none;font-size:12px;color:${T.danger};background:${T.dangerBg};border:1px solid ${T.dangerBorder};border-radius:10px;padding:10px 14px"></div>
-    ${mode==='register'?`<input id="a-name" placeholder="Ton prénom" style="width:100%;padding:14px;border-radius:12px;background:${T.input};border:1px solid ${T.inputBorder};color:${T.text};font-size:14px;font-family:'Syne',sans-serif">`:''}
-    <input id="a-email" type="email" placeholder="Email" style="width:100%;padding:14px;border-radius:12px;background:${T.input};border:1px solid ${T.inputBorder};color:${T.text};font-size:14px;font-family:'Syne',sans-serif">
-    <input id="a-pass" type="password" placeholder="Mot de passe" style="width:100%;padding:14px;border-radius:12px;background:${T.input};border:1px solid ${T.inputBorder};color:${T.text};font-size:14px;font-family:'Syne',sans-serif">
-    <button onclick="submitAuth('${mode}')" style="width:100%;padding:14px;border-radius:14px;border:none;background:linear-gradient(135deg,${T.accent},${T.accentDark});color:#0A0A0F;font-size:15px;font-weight:800;font-family:'Syne',sans-serif;cursor:pointer">${mode==='login'?'Se connecter →':'Créer mon compte →'}</button>
-    <div style="text-align:center;font-size:13px">
-      <span onclick="showEmailForm('${mode==='login'?'register':'login'}')" style="color:${T.accent};cursor:pointer;font-weight:600">${mode==='login'?'Créer un compte':'Déjà un compte ? Connexion'}</span>
-    </div>
-    <p style="text-align:center;font-size:11px;color:${T.muted}">🔒 Sécurisé par Firebase</p>`;
+    ${mode==='register'?`<input id="a-name" placeholder="Ton prénom" style="width:100%;padding:14px;border-radius:12px;background:${T.input};border:1px solid ${T.inputBorder};color:${T.text};font-size:14px;font-family:'Syne',sans-serif;margin-bottom:10px">`:''}
+    <input id="a-email" type="email" placeholder="Email" style="width:100%;padding:14px;border-radius:12px;background:${T.input};border:1px solid ${T.inputBorder};color:${T.text};font-size:14px;font-family:'Syne',sans-serif;margin-bottom:10px">
+    <input id="a-pass" type="password" placeholder="Mot de passe (min. 6 caractères)" style="width:100%;padding:14px;border-radius:12px;background:${T.input};border:1px solid ${T.inputBorder};color:${T.text};font-size:14px;font-family:'Syne',sans-serif;margin-bottom:14px">
+    <button id="a-submit" onclick="submitEmailAuth('${mode}')" style="width:100%;padding:14px;border-radius:14px;border:none;background:linear-gradient(135deg,${T.accent},${T.accentDark});color:#0A0A0F;font-size:15px;font-weight:800;font-family:'Syne',sans-serif;cursor:pointer">${mode==='login'?'Se connecter →':'Créer mon compte →'}</button>
+    <div style="text-align:center;font-size:13px;margin-top:8px">
+      <span onclick="showEmailForm('${mode==='login'?'register':'login'}')" style="color:${T.accent};cursor:pointer;font-weight:600">${mode==='login'?'Créer un compte':'Déjà un compte ?'}</span>
+      · <span onclick="openPanel('account')" style="color:${T.subtext};cursor:pointer">Retour</span>
+    </div>`; }
+
+async function submitEmailAuth(mode) {
+  if (!window.SOMA_AUTH) { toast('Firebase non chargé',true); return; }
+  const email=document.getElementById('a-email')?.value;
+  const pass=document.getElementById('a-pass')?.value;
+  const name=document.getElementById('a-name')?.value;
+  const err=document.getElementById('auth-err');
+  const btn=document.getElementById('a-submit');
+  if (!email||!pass){ err.style.display='block'; err.textContent='Remplis tous les champs.'; return; }
+  if (mode==='register'&&!name){ err.style.display='block'; err.textContent='Entre ton prénom.'; return; }
+  btn.textContent='⏳ En cours…'; btn.disabled=true;
+  try {
+    if (mode==='register') await window.SOMA_AUTH.signUp(name,email,pass);
+    else await window.SOMA_AUTH.signInEmail(email,pass);
+    closePanel('account');
+  } catch(e) {
+    console.error(e);
+    const msgs={'auth/email-already-in-use':'Email déjà utilisé.','auth/wrong-password':'Mot de passe incorrect.','auth/user-not-found':'Aucun compte avec cet email.','auth/weak-password':'Mot de passe trop court (min. 6 caractères).','auth/invalid-email':'Email invalide.'};
+    err.style.display='block'; err.textContent=msgs[e.code]||e.message;
+    btn.textContent=mode==='login'?'Se connecter →':'Créer mon compte →'; btn.disabled=false;
+  }
 }
 
-function submitAuth(mode) {
-  const email = document.getElementById('a-email')?.value;
-  const pass  = document.getElementById('a-pass')?.value;
-  const name  = document.getElementById('a-name')?.value;
-  const err   = document.getElementById('auth-err');
-  if (!email||!pass) { err.style.display='block'; err.textContent='Remplis tous les champs.'; return; }
-  if (mode==='register'&&!name) { err.style.display='block'; err.textContent='Entre ton prénom.'; return; }
-  state.user = { name: name||email.split('@')[0], email, method:'email' };
-  renderAll();
-  openPanel('account');
-}
-
-function loginWith(method) {
-  state.user = { name:'Utilisateur Google', email:'user@gmail.com', method:'google' };
-  renderAll();
-  openPanel('account');
-}
-
-function openAuth() { openPanel('account'); }
-
-// ── THEME TOGGLE ──────────────────────────────────────────────────────────────
-function toggleTheme() {
-  state.theme = state.theme==='dark'?'light':'dark';
-  document.querySelector('meta[name="theme-color"]').content = THEMES[state.theme].bg;
-  renderAll();
-}
-
-// ── INIT ──────────────────────────────────────────────────────────────────────
+// ── INIT ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-
-  // Sidebar toggle
-  document.getElementById('sidebar-toggle-btn').onclick = () => {
-    state.sidebarOpen = !state.sidebarOpen;
-    renderAll();
-  };
-
-  // New conv
+  document.getElementById('sidebar-toggle-btn').onclick = () => { S.sidebarOpen=!S.sidebarOpen; renderAll(); };
   document.getElementById('new-conv-btn').onclick = newConversation;
+  document.getElementById('fab-menu').onclick = openDrawer;
+  document.getElementById('login-cta').onclick = () => openPanel('account');
 
-  // Menu btn
-  document.getElementById('menu-btn').onclick = openDrawer;
-
-  // Textarea
   const ta = document.getElementById('msg-input');
   ta.addEventListener('input', () => { autoResize(ta); updateActionBtn(); });
-  ta.addEventListener('keydown', e => {
-    if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-  });
+  ta.addEventListener('keydown', e => { if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMessage(); } });
 
-  // Plus btn
-  document.getElementById('plus-btn').onclick = (e) => { e.stopPropagation(); togglePlusMenu(); };
+  document.getElementById('plus-btn').onclick = e => { e.stopPropagation(); togglePlusMenu(); };
 
-  // Login CTA
-  document.getElementById('login-cta').onclick = openAuth;
-
-  // Close menus on outside click
   document.addEventListener('click', e => {
-    if (state.ctxMenu && !document.getElementById('ctx-menu').contains(e.target)) closeCtxMenu();
-    if (state.showPlusMenu && !document.getElementById('plus-btn').contains(e.target) && !document.getElementById('plus-menu').contains(e.target)) {
-      state.showPlusMenu = false;
-      document.getElementById('plus-menu').classList.add('hidden');
-      const pb = document.getElementById('plus-btn');
-      pb.style.borderColor = T.border; pb.style.color = T.subtext;
+    if (S.ctxMenu && !document.getElementById('ctx-menu').contains(e.target)) closeCtxMenu();
+    if (S.showPlusMenu && !document.getElementById('plus-btn').contains(e.target) && !document.getElementById('plus-menu').contains(e.target)) {
+      S.showPlusMenu=false; document.getElementById('plus-menu').classList.add('hidden');
+      document.getElementById('plus-btn').style.borderColor=T.border; document.getElementById('plus-btn').style.color=T.subtext;
     }
   });
 
-  // Service Worker
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(()=>{});
-  }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 
   renderAll();
 });
