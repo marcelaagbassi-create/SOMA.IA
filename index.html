@@ -20,6 +20,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebas
 import { getAuth, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
 import { getFirestore, doc, setDoc, getDoc, collection, addDoc, getDocs, deleteDoc, updateDoc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
+// ⚠️ Firebase web API keys are designed to be public (client-side only).
+// Security is enforced via Firebase Security Rules + Authorized Domains in Firebase Console.
+// Make sure only your GitHub Pages domain is in the authorized domains list.
 const firebaseConfig = {
   apiKey: "AIzaSyDX7RzeGcJcYYBEUKYMTRiqmQQnD7OYhnM",
   authDomain: "soma-ai-a7322.firebaseapp.com",
@@ -87,6 +90,17 @@ textarea{resize:none}textarea:focus,input:focus{outline:none}
 @keyframes stopPulse{0%,100%{box-shadow:0 0 0 0 rgba(232,112,112,.25)}50%{box-shadow:0 0 0 7px rgba(232,112,112,0)}}
 @keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(232,197,71,.3)}50%{box-shadow:0 0 0 8px rgba(232,197,71,0)}}
 
+@keyframes orbFloat1{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(30px,-20px) scale(1.05)}66%{transform:translate(-20px,15px) scale(.97)}}
+@keyframes orbFloat2{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(-25px,20px) scale(1.03)}66%{transform:translate(20px,-15px) scale(.98)}}
+@keyframes orbFloat3{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(1.15)}}
+@keyframes ringPulse{0%{transform:scale(.95);opacity:.8}100%{transform:scale(1.4);opacity:0}}
+@keyframes waveBar{from{height:6px}to{height:34px}}
+@keyframes micActive{0%,100%{box-shadow:0 0 60px rgba(232,197,71,.3)}50%{box-shadow:0 0 90px rgba(232,112,112,.6),0 0 30px rgba(91,232,197,.4)}}
+@keyframes liveEntry{from{opacity:0;transform:scale(.85) translateY(20px)}to{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes gradientShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@keyframes liveGlow{0%,100%{box-shadow:0 0 0 0 rgba(232,112,112,.4)}50%{box-shadow:0 0 0 6px rgba(232,112,112,0)}}
+@keyframes liveDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+
 #app{display:flex;height:100dvh;overflow:hidden;transition:background .3s,color .3s}
 #sidebar{display:flex;flex-direction:column;transition:width .3s cubic-bezier(.4,0,.2,1),min-width .3s cubic-bezier(.4,0,.2,1);overflow:hidden}
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
@@ -117,6 +131,7 @@ textarea{resize:none}textarea:focus,input:focus{outline:none}
 #fab-menu{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .2s}
 #fab-menu:hover{opacity:.8}
 #fab-menu:active{transform:scale(.95)}
+@media (max-width:640px){ #header-title{ font-size:16px !important; } }
 
 #drawer{position:fixed;top:0;right:0;bottom:0;width:290px;display:flex;flex-direction:column;z-index:201;animation:slideRight .25s cubic-bezier(.4,0,.2,1);box-shadow:-12px 0 40px rgba(0,0,0,.3)}
 #drawer-overlay{position:fixed;inset:0;z-index:200;animation:fadeIn .2s ease}
@@ -208,13 +223,59 @@ textarea{resize:none}textarea:focus,input:focus{outline:none}
           <button id="plus-btn" class="icon-btn small"></button>
         </div>
         <textarea id="msg-input" rows="1" placeholder="Message à SOMA…"></textarea>
+        <button id="live-btn" title="Mode Live"></button>
         <button id="action-btn" class="icon-btn send"></button>
       </div>
-      <div id="input-footer">SOMA · Powered by AI · Firebase · Render</div>
+      <div id="input-footer">SOMA · Assistant IA · Firebase · Render</div>
     </div>
   </div>
 </div>
 
+
+
+<!-- LIVE PAGE -->
+<div id="live-page" style="display:none;position:fixed;inset:0;z-index:600;background:#050508;flex-direction:column;align-items:center;justify-content:center;overflow:hidden">
+  <!-- Animated background orbs -->
+  <div id="live-orbs" style="position:absolute;inset:0;pointer-events:none;overflow:hidden">
+    <div class="orb" style="width:350px;height:350px;top:-80px;left:-80px;background:radial-gradient(circle,rgba(232,197,71,.25),transparent 70%);animation:orbFloat1 6s ease-in-out infinite"></div>
+    <div class="orb" style="width:400px;height:400px;bottom:-100px;right:-100px;background:radial-gradient(circle,rgba(91,232,197,.2),transparent 70%);animation:orbFloat2 7s ease-in-out infinite"></div>
+    <div class="orb" style="width:300px;height:300px;top:40%;left:50%;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(167,139,250,.2),transparent 70%);animation:orbFloat3 5s ease-in-out infinite"></div>
+    <div class="orb" style="width:250px;height:250px;top:20%;right:10%;background:radial-gradient(circle,rgba(232,112,112,.15),transparent 70%);animation:orbFloat1 8s ease-in-out 1s infinite"></div>
+  </div>
+
+  <!-- Close button -->
+  <button onclick="closeLivePage()" style="position:absolute;top:20px;right:20px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;z-index:10;transition:all .2s" onmouseenter="this.style.background='rgba(255,255,255,.15)'" onmouseleave="this.style.background='rgba(255,255,255,.08)'">✕</button>
+
+  <!-- SOMA logo -->
+  <div style="position:relative;z-index:5;text-align:center;margin-bottom:50px">
+    <div id="live-logo" style="font-size:48px;font-weight:800;letter-spacing:-2px;background:linear-gradient(90deg,#E8C547,#5BE8C5,#E87070,#A78BFA,#E8C547);background-size:300% 100%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:gradientShift 3s ease infinite;margin-bottom:6px">SOMA</div>
+    <div style="font-size:12px;font-weight:600;letter-spacing:3px;color:rgba(255,255,255,.4);text-transform:uppercase">Mode Live</div>
+  </div>
+
+  <!-- Central orb — mic visualizer -->
+  <div style="position:relative;z-index:5;margin-bottom:50px">
+    <!-- Pulse rings -->
+    <div id="live-ring1" style="position:absolute;inset:-20px;border-radius:50%;border:1.5px solid rgba(232,197,71,.3);animation:ringPulse 2s ease-out infinite"></div>
+    <div id="live-ring2" style="position:absolute;inset:-40px;border-radius:50%;border:1px solid rgba(91,232,197,.2);animation:ringPulse 2s ease-out .5s infinite"></div>
+    <div id="live-ring3" style="position:absolute;inset:-60px;border-radius:50%;border:1px solid rgba(167,139,250,.15);animation:ringPulse 2s ease-out 1s infinite"></div>
+    <!-- Central button -->
+    <button id="live-mic-btn" onclick="toggleLiveMic()" style="position:relative;width:120px;height:120px;border-radius:50%;background:linear-gradient(135deg,#E8C547,#5BE8C5,#A78BFA);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 0 60px rgba(232,197,71,.3);transition:all .3s;z-index:5">
+      <div id="live-mic-inner" style="width:100px;height:100px;border-radius:50%;background:#050508;display:flex;align-items:center;justify-content:center;font-size:36px;transition:all .3s">🎤</div>
+    </button>
+  </div>
+
+  <!-- Status text -->
+  <div id="live-status" style="position:relative;z-index:5;font-size:16px;font-weight:600;color:rgba(255,255,255,.6);letter-spacing:.5px;margin-bottom:20px;min-height:24px;text-align:center;padding:0 40px">Appuie pour parler</div>
+
+  <!-- Transcript bubble -->
+  <div id="live-transcript" style="position:relative;z-index:5;max-width:340px;width:90%;min-height:60px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:16px 20px;font-size:14px;line-height:1.6;color:rgba(255,255,255,.8);text-align:center;backdrop-filter:blur(10px);display:none"></div>
+
+  <!-- Response bubble -->
+  <div id="live-response" style="position:relative;z-index:5;max-width:340px;width:90%;margin-top:12px;background:linear-gradient(135deg,rgba(232,197,71,.08),rgba(91,232,197,.08));border:1px solid rgba(232,197,71,.2);border-radius:20px;padding:16px 20px;font-size:14px;line-height:1.6;color:rgba(255,255,255,.9);text-align:center;backdrop-filter:blur(10px);display:none"></div>
+
+  <!-- Wave bars (built by JS in openLivePage) -->
+  <div id="live-wave" style="position:absolute;bottom:60px;left:50%;transform:translateX(-50%);display:none;flex-direction:row;gap:4px;align-items:flex-end;height:40px"></div>
+</div>
 
 <!-- OVERLAYS -->
 <div id="ctx-menu" class="hidden"></div>
@@ -389,26 +450,26 @@ function applyTheme() {
 
   // Header
   const hdr = document.getElementById('header');
-  hdr.style.cssText = `padding:14px 18px;border-bottom:1px solid ${T.border};display:flex;align-items:center;gap:12px;background:${T.bg}`;
+  hdr.style.cssText = `padding:14px 18px;border-bottom:1px solid ${T.border};display:flex;align-items:center;justify-content:space-between;gap:12px;background:${T.bg}`;
   const stb = document.getElementById('sidebar-toggle-btn');
   stb.style.cssText = `width:36px;height:36px;border-radius:9px;background:${T.card};border:1px solid ${T.border};color:${T.text};cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0`;
-  stb.innerHTML = S.sidebarOpen ? '←' : '→';
+  stb.innerHTML = S.sidebarOpen ? '✕' : '✦';
 
-  document.getElementById('header-title').style.cssText = `font-size:15px;font-weight:800;letter-spacing:-.5px;color:${T.text}`;
-  const mb=document.getElementById('model-badge'); if(mb) mb.style.display='none';
+  document.getElementById('header-title').style.cssText = `font-size:20px;font-weight:800;letter-spacing:-1px;background:linear-gradient(90deg,#E8C547,#5BE8C5,#E87070,#A78BFA,#E8C547);background-size:300% 100%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:gradientShift 4s ease infinite`;
+
   document.getElementById('header-status').style.cssText = `font-size:11px;color:${T.muted}`;
   document.getElementById('header-status').textContent = S.loading?'En train de réfléchir…':S.aborted?'Réponse interrompue':'Prête à discuter';
 
   // FAB menu button — bottom right corner
   const fab = document.getElementById('fab-menu');
-  fab.style.cssText = `width:38px;height:38px;border-radius:10px;background:${T.card};border:1px solid ${T.border};color:${T.text};cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s`;
+  fab.style.cssText = `width:36px;height:36px;border-radius:9px;background:${T.card};border:1px solid ${T.border};color:${T.text};cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s`;
   fab.innerHTML = ic.menu();
 
   // Messages
   document.getElementById('messages').style.background = T.bg;
 
   // Empty state
-  document.getElementById('empty-icon').style.cssText = `font-size:50px;margin-bottom:10px;background:linear-gradient(135deg,${T.accent},${T.cyan});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`;
+  document.getElementById('empty-icon').style.cssText = `font-size:50px;margin-bottom:10px;background:linear-gradient(90deg,#E8C547,#5BE8C5,#E87070,#A78BFA);background-size:200% 100%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:gradientShift 3s ease infinite`;
   document.getElementById('empty-title').style.cssText = `font-size:22px;font-weight:800;letter-spacing:-.5px;margin-bottom:8px;color:${T.text}`;
   document.getElementById('empty-sub').style.cssText = `font-size:14px;color:${T.muted}`;
 
@@ -428,6 +489,14 @@ function applyTheme() {
   Object.assign(ta.style, {flex:'1',background:'transparent',border:'none',color:T.text,fontSize:'14px',fontFamily:"'Syne',sans-serif",lineHeight:'1.6',maxHeight:'160px',overflowY:'auto',paddingTop:'6px'});
 
   document.getElementById('input-footer').style.cssText = `text-align:center;margin-top:7px;font-size:11px;color:${T.border}`;
+  const lb = document.getElementById('live-btn');
+  if (lb) {
+    const isLive = lb.dataset.live === 'true';
+    lb.style.cssText = `width:52px;height:28px;border-radius:20px;border:1.5px solid ${isLive?'#E87070':'#2A2A38'};background:${isLive?'#E8707018':'transparent'};color:${isLive?'#E87070':T.subtext};cursor:pointer;font-size:10px;font-weight:700;font-family:'Syne',sans-serif;display:flex;align-items:center;justify-content:center;gap:4px;flex-shrink:0;transition:all .3s;${isLive?'animation:liveGlow 2s ease-in-out infinite':''}`;
+    lb.innerHTML = isLive 
+      ? '<span style="width:6px;height:6px;border-radius:50%;background:#E87070;animation:liveDot 1s ease-in-out infinite"></span>LIVE'
+      : 'LIVE';
+  }
 
   // Plus btn
   const pb = document.getElementById('plus-btn');
@@ -509,6 +578,65 @@ function renderSidebarFooter() {
   }
 }
 
+
+// ── MARKDOWN RENDERER ──────────────────────────────────────────────────────
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  let html = escapeHtml(text);
+
+  // Code blocks ```lang\n...\n```
+  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const label = lang || 'code';
+    return `<div style="margin:10px 0;border-radius:10px;overflow:hidden;background:#0D0D14;border:1px solid #2A2A38">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:#131320;border-bottom:1px solid #2A2A38">
+        <span style="font-size:11px;color:#8888AA;font-weight:600">${label}</span>
+        <button onclick="copyCode(this)" data-code="${escapeHtml(code.trim())}" style="font-size:11px;color:#E8C547;background:none;border:none;cursor:pointer;font-family:'Syne',sans-serif;font-weight:600">Copier</button>
+      </div>
+      <pre style="margin:0;padding:12px;font-size:13px;color:#E8E5E0;overflow-x:auto;font-family:'JetBrains Mono',monospace,sans-serif;white-space:pre-wrap;word-break:break-word"><code>${escapeHtml(code.trim())}</code></pre>
+    </div>`;
+  });
+
+  // Inline code `code`
+  html = html.replace(/`([^`]+)`/g, '<code style="background:#1A1A28;border:1px solid #2A2A38;border-radius:5px;padding:1px 6px;font-size:12px;color:#E8C547;font-family:monospace">$1</code>');
+
+  // Bold **text**
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#F0EDE8;font-weight:700">$1</strong>');
+
+  // Italic *text*
+  html = html.replace(/\*([^*]+)\*/g, '<em style="color:#C8C5C0">$1</em>');
+
+  // Headers ### ## #
+  html = html.replace(/^### (.+)$/gm, '<div style="font-size:15px;font-weight:800;color:#F0EDE8;margin:14px 0 6px">$1</div>');
+  html = html.replace(/^## (.+)$/gm, '<div style="font-size:17px;font-weight:800;color:#F0EDE8;margin:16px 0 8px">$1</div>');
+  html = html.replace(/^# (.+)$/gm, '<div style="font-size:20px;font-weight:800;color:#F0EDE8;margin:18px 0 10px">$1</div>');
+
+  // Numbered lists
+  html = html.replace(/^(\d+)\. (.+)$/gm, '<div style="display:flex;gap:8px;margin:4px 0;align-items:flex-start"><span style="color:#E8C547;font-weight:700;min-width:20px">$1.</span><span>$2</span></div>');
+
+  // Bullet lists - or *
+  html = html.replace(/^[\-\*] (.+)$/gm, '<div style="display:flex;gap:8px;margin:4px 0;align-items:flex-start"><span style="color:#E8C547;font-size:16px;line-height:1.4">•</span><span>$1</span></div>');
+
+  // Horizontal rule ---
+  html = html.replace(/^---$/gm, '<hr style="border:none;border-top:1px solid #2A2A38;margin:12px 0"/>');
+
+  // Line breaks
+  html = html.replace(/\n\n/g, '<br><br>');
+  html = html.replace(/\n/g, '<br>');
+
+  return html;
+}
+
+function copyCode(btn) {
+  navigator.clipboard?.writeText(btn.dataset.code||'').then(()=>{
+    btn.textContent='✓ Copié !';
+    setTimeout(()=>btn.textContent='Copier',2000);
+  });
+}
+
 // ── RENDER MESSAGES ────────────────────────────────────────────────────────
 function renderMessages() {
   const inner = document.getElementById('messages-inner');
@@ -524,8 +652,12 @@ function renderMessages() {
     av.style.background = msg.role==='user' ? `linear-gradient(135deg,${T.cyan},#3BBFA3)` : `linear-gradient(135deg,${T.accent},${T.accentDark})`;
     av.textContent = msg.role==='user' ? (S.firebaseUser?userInitial():'U') : '✦';
     const bbl = document.createElement('div'); bbl.className=`bubble ${msg.role==='user'?'user':'ai'}`;
-    bbl.style.cssText = `background:${msg.role==='user'?T.bubbleUser:T.bubbleAi};border:1px solid ${msg.role==='user'?T.borderUser:T.borderAi};color:${T.msgColor}`;
-    bbl.textContent = msg.content;
+    bbl.style.cssText = `background:${msg.role==='user'?T.bubbleUser:T.bubbleAi};border:1px solid ${msg.role==='user'?T.borderUser:T.borderAi};color:${T.msgColor};line-height:1.75;font-size:14px`;
+    if (msg.role === 'assistant') {
+      bbl.innerHTML = renderMarkdown(msg.content);
+    } else {
+      bbl.textContent = msg.content;
+    }
     row.appendChild(av); row.appendChild(bbl); inner.appendChild(row);
   });
 
@@ -909,6 +1041,162 @@ async function submitEmailAuth(mode) {
   }
 }
 
+
+// ── LIVE PAGE ───────────────────────────────────────────────────────────────
+let liveRec = null;
+let liveActive = false;
+let liveSpeaking = false;
+
+function openLivePage() {
+  const page = document.getElementById('live-page');
+  page.style.display = 'flex';
+  page.style.animation = 'liveEntry .5s cubic-bezier(.4,0,.2,1) forwards';
+  // Init wave bars dynamically
+  const wave = document.getElementById('live-wave');
+  wave.innerHTML = '';
+  wave.style.display = 'none';
+  for (let i=0; i<12; i++) {
+    const bar = document.createElement('div');
+    const dur = (0.5 + Math.random()*0.5).toFixed(2);
+    const delay = (i * 0.07).toFixed(2);
+    bar.style.cssText = `width:4px;min-height:6px;border-radius:4px;background:linear-gradient(to top,#E8C547,#5BE8C5);animation:waveBar ${dur}s ease-in-out ${delay}s infinite alternate`;
+    wave.appendChild(bar);
+  }
+}
+
+function closeLivePage() {
+  stopLiveMic();
+  const page = document.getElementById('live-page');
+  page.style.opacity = '0';
+  page.style.transform = 'scale(.95)';
+  page.style.transition = 'all .3s';
+  setTimeout(() => {
+    page.style.display = 'none';
+    page.style.opacity = '';
+    page.style.transform = '';
+    page.style.transition = '';
+  }, 300);
+}
+
+function toggleLiveMic() {
+  if (liveSpeaking) { stopLiveMic(); return; }
+  startLiveMic();
+}
+
+function startLiveMic() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { setLiveStatus('❌ Micro non supporté sur ce navigateur'); return; }
+
+  liveSpeaking = true;
+  setLiveStatus(`🎤 Je t’écoute…`);
+  setLiveMicStyle(true);
+
+  document.getElementById('live-wave').style.display = 'flex';
+  document.getElementById('live-transcript').style.display = 'none';
+  document.getElementById('live-response').style.display = 'none';
+
+  liveRec = new SR();
+  liveRec.lang = 'fr-FR';
+  liveRec.continuous = false;
+  liveRec.interimResults = true;
+
+  liveRec.onresult = (e) => {
+    const interim = Array.from(e.results).map(r => r[0].transcript).join('');
+    const tr = document.getElementById('live-transcript');
+    tr.style.display = 'block';
+    tr.textContent = interim;
+    if (e.results[e.results.length-1].isFinal) {
+      sendLiveMessage(interim);
+    }
+  };
+
+  liveRec.onend = () => {
+    liveSpeaking = false;
+    setLiveMicStyle(false);
+    document.getElementById('live-wave').style.display = 'none';
+  };
+
+  liveRec.onerror = (e) => {
+    liveSpeaking = false;
+    setLiveMicStyle(false);
+    document.getElementById('live-wave').style.display = 'none';
+    setLiveStatus('Appuie pour parler');
+  };
+
+  liveRec.start();
+}
+
+function stopLiveMic() {
+  if (liveRec) { liveRec.stop(); liveRec = null; }
+  liveSpeaking = false;
+  setLiveMicStyle(false);
+  document.getElementById('live-wave').style.display = 'none';
+  setLiveStatus('Appuie pour parler');
+}
+
+function setLiveMicStyle(active) {
+  const btn = document.getElementById('live-mic-btn');
+  const inner = document.getElementById('live-mic-inner');
+  if (active) {
+    btn.style.animation = 'micActive 1.5s ease-in-out infinite';
+    btn.style.transform = 'scale(1.08)';
+    inner.textContent = '⏹';
+    inner.style.fontSize = '32px';
+  } else {
+    btn.style.animation = '';
+    btn.style.transform = 'scale(1)';
+    inner.textContent = '🎤';
+    inner.style.fontSize = '36px';
+  }
+}
+
+function setLiveStatus(text) {
+  document.getElementById('live-status').textContent = text;
+}
+
+async function sendLiveMessage(text) {
+  setLiveStatus('⏳ SOMA réfléchit…');
+  const respEl = document.getElementById('live-response');
+  respEl.style.display = 'none';
+
+  try {
+    const res = await fetch(API_URL, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model:'mistral-large-latest', max_tokens:300,
+        system:"Tu es SOMA, un assistant vocal. Réponds de manière concise en 1-3 phrases maximum, à l'oral, en français.",
+        messages:[...S.messages.slice(-4), {role:'user',content:text}]
+      })
+    });
+    const data = await res.json();
+    const reply = data.content?.[0]?.text || data.choices?.[0]?.message?.content || '…';
+
+    respEl.style.display = 'block';
+    respEl.textContent = reply;
+    setLiveStatus('✦ SOMA a répondu');
+
+    // Also save to main chat
+    S.messages.push({role:'user',content:text,id:Date.now()});
+    S.messages.push({role:'assistant',content:reply,id:Date.now()+1});
+    saveCurrentConv();
+
+    // Text to speech
+    if ('speechSynthesis' in window) {
+      const utt = new SpeechSynthesisUtterance(reply);
+      utt.lang = 'fr-FR'; utt.rate = 1.05; utt.pitch = 1;
+      utt.onstart = () => setLiveStatus('🔊 SOMA parle…');
+      utt.onend = () => setLiveStatus('Appuie pour parler');
+      window.speechSynthesis.speak(utt);
+    } else {
+      setTimeout(() => setLiveStatus('Appuie pour parler'), 3000);
+    }
+
+  } catch(e) {
+    setLiveStatus('❌ Erreur de connexion');
+    setTimeout(() => setLiveStatus('Appuie pour parler'), 2000);
+  }
+}
+
 // ── INIT ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sidebar-toggle-btn').onclick = () => { S.sidebarOpen=!S.sidebarOpen; renderAll(); };
@@ -921,6 +1209,9 @@ document.addEventListener('DOMContentLoaded', () => {
   ta.addEventListener('keydown', e => { if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMessage(); } });
 
   document.getElementById('plus-btn').onclick = e => { e.stopPropagation(); togglePlusMenu(); };
+
+  // Live button — ouvre la page Live
+  document.getElementById('live-btn').onclick = () => openLivePage();
 
   document.addEventListener('click', e => {
     if (S.ctxMenu && !document.getElementById('ctx-menu').contains(e.target)) closeCtxMenu();
